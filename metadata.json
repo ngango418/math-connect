@@ -1,0 +1,6 @@
+{
+  "name": "ClassQR Studio — Quản lý Nhóm, Thẻ QR & Chấm điểm",
+  "description": "Hệ thống quản lý lớp học 9/23, 9/26, 9/28 dành cho giáo viên và học sinh: phân chia 5 nhiệm vụ theo thẻ QR, chia tổ cân bằng theo hạt giống năng lực và chấm điểm xếp hạng theo ngày.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
