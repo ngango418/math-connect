@@ -60,39 +60,46 @@ const RUBRIC_CRITERIA: RubricCriterionMeta[] = [
     key: 'participation',
     label: 'Tham gia tích cực',
     shortDesc: 'Chủ động đóng góp ý kiến',
-    headerBg: 'bg-sky-100/90',
+    headerBg: 'bg-sky-100/95',
     headerText: 'text-sky-900',
-    activeBtn: 'bg-gradient-to-br from-sky-500 to-blue-600 text-white border-sky-600 shadow-sm',
-    inactiveBtn: 'bg-white text-sky-900 border-sky-200 hover:bg-sky-50',
+    activeBtn: 'bg-gradient-to-br from-sky-500 to-blue-600 text-white border-sky-600 shadow-sm ring-2 ring-sky-200',
+    inactiveBtn: 'bg-white text-sky-950 border-sky-200/90 hover:bg-sky-50 hover:border-sky-300',
   },
   {
     key: 'collaboration',
     label: 'Hợp tác, phân công',
     shortDesc: 'Phối hợp đều giữa các bạn',
-    headerBg: 'bg-violet-100/90',
+    headerBg: 'bg-violet-100/95',
     headerText: 'text-violet-900',
-    activeBtn: 'bg-gradient-to-br from-violet-500 to-purple-600 text-white border-violet-600 shadow-sm',
-    inactiveBtn: 'bg-white text-violet-900 border-violet-200 hover:bg-violet-50',
+    activeBtn: 'bg-gradient-to-br from-violet-500 to-purple-600 text-white border-violet-600 shadow-sm ring-2 ring-violet-200',
+    inactiveBtn: 'bg-white text-violet-950 border-violet-200/90 hover:bg-violet-50 hover:border-violet-300',
   },
   {
     key: 'accuracy',
     label: 'Kết quả chính xác',
     shortDesc: 'Đúng trọng tâm kiến thức',
-    headerBg: 'bg-emerald-100/90',
+    headerBg: 'bg-emerald-100/95',
     headerText: 'text-emerald-900',
-    activeBtn: 'bg-gradient-to-br from-emerald-500 to-teal-600 text-white border-emerald-600 shadow-sm',
-    inactiveBtn: 'bg-white text-emerald-900 border-emerald-200 hover:bg-emerald-50',
+    activeBtn: 'bg-gradient-to-br from-emerald-500 to-teal-600 text-white border-emerald-600 shadow-sm ring-2 ring-emerald-200',
+    inactiveBtn: 'bg-white text-emerald-950 border-emerald-200/90 hover:bg-emerald-50 hover:border-emerald-300',
   },
   {
     key: 'creativity',
     label: 'Trình bày sáng tạo',
     shortDesc: 'Rõ ràng, mạch lạc, ấn tượng',
-    headerBg: 'bg-amber-100/90',
+    headerBg: 'bg-amber-100/95',
     headerText: 'text-amber-900',
-    activeBtn: 'bg-gradient-to-br from-amber-500 to-orange-500 text-white border-amber-600 shadow-sm',
-    inactiveBtn: 'bg-white text-amber-900 border-amber-200 hover:bg-amber-50',
+    activeBtn: 'bg-gradient-to-br from-amber-500 to-orange-500 text-white border-amber-600 shadow-sm ring-2 ring-amber-200',
+    inactiveBtn: 'bg-white text-amber-950 border-amber-200/90 hover:bg-amber-50 hover:border-amber-300',
   },
 ];
+
+const RUBRIC_COLUMN_TINTS: Record<keyof RubricCriteriaScores, string> = {
+  participation: 'bg-sky-50/35',
+  collaboration: 'bg-violet-50/35',
+  accuracy: 'bg-emerald-50/35',
+  creativity: 'bg-amber-50/35',
+};
 
 function emptyCriteria(): RubricCriteriaScores {
   return {
@@ -360,6 +367,56 @@ export function DailyGradingTab({
     return Number((sum / entries.length).toFixed(2));
   }, [entries]);
 
+  const studentAvgBonusMap = useMemo(() => {
+    const merged: DailyGradeRecord[] = [
+      ...grades.filter((g) => g.classId === classId && g.date !== selectedDate),
+      {
+        id: `${classId}_${selectedDate}`,
+        classId,
+        date: selectedDate,
+        lessonTopic,
+        entries,
+        publishedToStudents: published,
+        updatedAt: '',
+      },
+    ];
+    const map = new Map<string, number>();
+    for (const stu of classStudents) {
+      let count = 0;
+      let sumBonus = 0;
+      for (const rec of merged) {
+        const entry = rec.entries.find((e) => e.groupNumber === stu.groupNumber);
+        if (!entry) continue;
+        count += 1;
+        sumBonus += Number(entry.bonusPoints ?? 0);
+      }
+      map.set(stu.id, count > 0 ? Number((sumBonus / count).toFixed(2)) : 0);
+    }
+    return map;
+  }, [grades, classId, selectedDate, lessonTopic, entries, published, classStudents]);
+
+  const classStudentBonusStats = useMemo(() => {
+    if (classStudents.length === 0) {
+      return { avgSessionBonus: 0, avgCumulativeBonus: 0, avgTotal: 0 };
+    }
+    let sumBonus = 0;
+    let sumCumBonus = 0;
+    let sumTotal = 0;
+    for (const stu of classStudents) {
+      const ge = entries.find((e) => e.groupNumber === stu.groupNumber);
+      const b = ge?.bonusPoints ?? 0;
+      sumBonus += b;
+      sumCumBonus += studentAvgBonusMap.get(stu.id) ?? b;
+      sumTotal += ge?.finalScore ?? 0;
+    }
+    const n = classStudents.length;
+    return {
+      avgSessionBonus: Number((sumBonus / n).toFixed(2)),
+      avgCumulativeBonus: Number((sumCumBonus / n).toFixed(2)),
+      avgTotal: Number((sumTotal / n).toFixed(2)),
+    };
+  }, [classStudents, entries, studentAvgBonusMap]);
+
   const noHomeworkEntry = entries.find((e) => e.privilegeCard === 'NO_HOMEWORK') || null;
   const sosEntry = entries.find((e) => e.privilegeCard === 'SOS') || null;
   const hasAnyScore = entries.some((e) => e.finalScore > 0);
@@ -367,10 +424,10 @@ export function DailyGradingTab({
   return (
     <div className="space-y-6">
       {/* Control Header */}
-      <div className="bg-white border border-slate-200 rounded-3xl p-4 sm:p-6 shadow-[0_10px_30px_-14px_rgba(15,23,42,0.1)]">
+      <div className="bg-white border border-slate-200 rounded-3xl p-5 sm:p-6 shadow-[0_10px_30px_-14px_rgba(15,23,42,0.1)]">
         <div className="flex flex-col xl:flex-row xl:items-center xl:justify-between gap-4">
           <div>
-            <h2 className="text-xl sm:text-2xl font-extrabold text-slate-900 text-balance">
+            <h2 className="text-2xl sm:text-3xl font-extrabold text-slate-900 text-balance">
               Bảng Tiêu chí Chấm điểm &amp; Đặc quyền Top 2 — Lớp {classId}
             </h2>
             <p className="text-sm sm:text-base text-slate-600 mt-1">
@@ -386,7 +443,7 @@ export function DailyGradingTab({
               <button
                 type="button"
                 onClick={() => setViewMode('rubric')}
-                className={`flex-1 sm:flex-none inline-flex items-center justify-center gap-1.5 px-3.5 py-2 text-sm font-bold rounded-xl transition-colors whitespace-nowrap ${
+                className={`flex-1 sm:flex-none inline-flex items-center justify-center gap-1.5 px-4 py-2 text-sm sm:text-base font-bold rounded-xl transition-colors whitespace-nowrap ${
                   viewMode === 'rubric'
                     ? 'bg-gradient-to-r from-sky-600 to-blue-600 text-white shadow-sm'
                     : 'text-slate-700 hover:text-slate-900'
@@ -398,7 +455,7 @@ export function DailyGradingTab({
               <button
                 type="button"
                 onClick={() => setViewMode('live')}
-                className={`flex-1 sm:flex-none inline-flex items-center justify-center gap-1.5 px-3.5 py-2 text-sm font-bold rounded-xl transition-colors whitespace-nowrap ${
+                className={`flex-1 sm:flex-none inline-flex items-center justify-center gap-1.5 px-4 py-2 text-sm sm:text-base font-bold rounded-xl transition-colors whitespace-nowrap ${
                   viewMode === 'live'
                     ? 'bg-gradient-to-r from-violet-600 to-purple-600 text-white shadow-sm'
                     : 'text-slate-700 hover:text-slate-900'
@@ -410,7 +467,7 @@ export function DailyGradingTab({
               <button
                 type="button"
                 onClick={() => setViewMode('spreadsheet')}
-                className={`flex-1 sm:flex-none inline-flex items-center justify-center gap-1.5 px-3.5 py-2 text-sm font-bold rounded-xl transition-colors whitespace-nowrap ${
+                className={`flex-1 sm:flex-none inline-flex items-center justify-center gap-1.5 px-4 py-2 text-sm sm:text-base font-bold rounded-xl transition-colors whitespace-nowrap ${
                   viewMode === 'spreadsheet'
                     ? 'bg-gradient-to-r from-emerald-600 to-teal-600 text-white shadow-sm'
                     : 'text-slate-700 hover:text-slate-900'
@@ -427,16 +484,16 @@ export function DailyGradingTab({
                 type="date"
                 value={selectedDate}
                 onChange={(e) => onDateChange(e.target.value)}
-                className="w-full sm:w-auto pl-9 pr-3 py-2 text-sm font-mono font-semibold tabular-nums border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-600"
+                className="w-full sm:w-auto pl-9 pr-3 py-2 text-sm sm:text-base font-mono font-semibold tabular-nums border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-600"
               />
             </div>
 
             <button
               type="button"
               onClick={() =>
-                exportSessionGradebookToExcel(classId, buildCurrentGradeRecord(), classStudents)
+                exportSessionGradebookToExcel(classId, buildCurrentGradeRecord(), classStudents, grades)
               }
-              className="inline-flex items-center gap-1.5 px-3.5 py-2 text-sm font-bold text-emerald-800 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 rounded-xl transition-colors whitespace-nowrap"
+              className="inline-flex items-center gap-1.5 px-4 py-2 text-sm sm:text-base font-bold text-emerald-800 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 rounded-xl transition-colors whitespace-nowrap"
             >
               <FileSpreadsheet className="w-4 h-4" />
               Xuất Excel
@@ -495,25 +552,25 @@ export function DailyGradingTab({
       </div>
 
       {/* Automatic Top-2 Privilege Cards Spotlight (No Homework & SOS) with Swap Button */}
-      <div className="bg-white border border-slate-200 rounded-3xl p-4 sm:p-6 shadow-[0_10px_28px_-12px_rgba(15,23,42,0.1)]">
+      <div className="bg-white border border-slate-200 rounded-3xl p-5 sm:p-6 shadow-[0_10px_28px_-12px_rgba(15,23,42,0.1)]">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-4">
           <div>
-            <h3 className="text-lg sm:text-xl font-extrabold text-slate-900 flex items-center gap-2">
-              <Sparkles className="w-5 h-5 text-amber-500 shrink-0" />
+            <h3 className="text-xl sm:text-2xl font-extrabold text-slate-900 flex items-center gap-2">
+              <Sparkles className="w-6 h-6 text-amber-500 shrink-0" />
               2 Thẻ Đặc Quyền Tự Động (Top 2 Nhóm Điểm Cao Nhất)
             </h3>
-            <p className="text-sm text-slate-600">
+            <p className="text-sm sm:text-base text-slate-600 mt-0.5">
               Hệ thống tự động chọn 2 nhóm có tổng điểm cao nhất để trao thẻ <strong>No Homework</strong> và <strong>SOS</strong>. Bấm nút giữa để hoán đổi 2 thẻ cho nhau.
             </p>
           </div>
         </div>
 
         {!hasAnyScore ? (
-          <div className="p-6 rounded-2xl border-2 border-dashed border-sky-200 bg-sky-50/60 text-center text-sm sm:text-base font-semibold text-sky-900">
+          <div className="p-6 rounded-2xl border-2 border-dashed border-sky-200 bg-sky-50/60 text-center text-base sm:text-lg font-semibold text-sky-900">
             Chưa có điểm số trong buổi học. Hãy chấm các tiêu chí ở bảng bên dưới để hệ thống tự động hiện 2 thẻ đặc quyền <strong>No Homework</strong> và <strong>SOS</strong>!
           </div>
         ) : (
-          <div className="grid grid-cols-1 lg:grid-cols-11 gap-4 items-center">
+          <div className="grid grid-cols-1 lg:grid-cols-11 gap-4 sm:gap-5 items-center">
             {/* Card 1: NO HOMEWORK */}
             <motion.div
               layout
@@ -521,31 +578,31 @@ export function DailyGradingTab({
               initial={{ opacity: 0.85, scale: 0.98 }}
               animate={{ opacity: 1, scale: 1 }}
               transition={{ type: 'spring', stiffness: 320, damping: 24 }}
-              className="lg:col-span-5 rounded-3xl p-5 sm:p-6 bg-gradient-to-br from-emerald-500 via-teal-500 to-cyan-600 text-white shadow-[0_14px_30px_-10px_rgba(16,185,129,0.5)]"
+              className="lg:col-span-5 rounded-3xl p-5 sm:p-7 bg-gradient-to-br from-emerald-500 via-teal-500 to-cyan-600 text-white shadow-[0_14px_30px_-10px_rgba(16,185,129,0.5)]"
             >
-              <div className="flex items-start justify-between gap-3">
+              <div className="flex items-start justify-between gap-4">
                 <div className="min-w-0">
-                  <div className="text-xs sm:text-sm font-bold text-emerald-50 flex items-center gap-1.5">
-                    <Trophy className="w-4 h-4 text-amber-200 shrink-0" />
+                  <div className="text-sm sm:text-base font-bold text-emerald-50 flex items-center gap-1.5">
+                    <Trophy className="w-5 h-5 text-amber-200 shrink-0" />
                     <span>Thẻ Đặc Quyền #1</span>
                   </div>
-                  <div className="text-2xl sm:text-3xl font-extrabold tracking-tight mt-1 font-display">
+                  <div className="text-3xl sm:text-4xl font-extrabold tracking-tight mt-1 font-display">
                     NO HOMEWORK
                   </div>
-                  <p className="text-xs sm:text-sm text-white/90 mt-1">
+                  <p className="text-sm sm:text-base text-white/95 mt-1.5 font-medium">
                     Đặc quyền miễn Bài tập về nhà buổi học hôm nay!
                   </p>
                 </div>
 
                 {noHomeworkEntry && (
-                  <div className="text-right shrink-0 bg-white/20 backdrop-blur-xs px-3.5 py-2 rounded-2xl border border-white/25">
-                    <div className="text-xs font-bold text-white/90">
+                  <div className="text-right shrink-0 bg-white/20 backdrop-blur-xs px-4 py-2.5 rounded-2xl border border-white/25">
+                    <div className="text-xs sm:text-sm font-bold text-white/95">
                       {GROUP_THEMES[noHomeworkEntry.groupNumber].teamLabel}
                     </div>
-                    <div className="text-xl sm:text-2xl font-extrabold font-display">
+                    <div className="text-2xl sm:text-3xl font-extrabold font-display">
                       Nhóm {noHomeworkEntry.groupNumber}
                     </div>
-                    <div className="text-sm font-mono font-extrabold tabular-nums text-amber-200">
+                    <div className="text-base sm:text-lg font-mono font-extrabold tabular-nums text-amber-200">
                       {noHomeworkEntry.finalScore.toFixed(1)} đ
                     </div>
                   </div>
@@ -562,10 +619,10 @@ export function DailyGradingTab({
                 disabled={!noHomeworkEntry || !sosEntry}
                 onClick={handleSwapPrivileges}
                 title="Đổi thẻ No Homework và SOS giữa 2 nhóm"
-                className="w-full lg:w-auto inline-flex lg:flex-col items-center justify-center gap-1.5 px-4 py-3 min-h-[48px] text-sm font-extrabold text-slate-900 bg-amber-300 hover:bg-amber-400 disabled:opacity-45 rounded-2xl shadow-sm border border-amber-400 transition-colors cursor-pointer"
+                className="w-full lg:w-auto inline-flex lg:flex-col items-center justify-center gap-1.5 px-5 py-3.5 min-h-[52px] text-sm sm:text-base font-extrabold text-slate-900 bg-amber-300 hover:bg-amber-400 disabled:opacity-45 rounded-2xl shadow-sm border border-amber-400 transition-colors cursor-pointer"
               >
                 <ArrowLeftRight className="w-5 h-5 shrink-0" />
-                <span className="text-xs font-extrabold whitespace-nowrap">Đổi thẻ</span>
+                <span className="text-xs sm:text-sm font-extrabold whitespace-nowrap">Đổi thẻ</span>
               </motion.button>
             </div>
 
@@ -576,36 +633,36 @@ export function DailyGradingTab({
               initial={{ opacity: 0.85, scale: 0.98 }}
               animate={{ opacity: 1, scale: 1 }}
               transition={{ type: 'spring', stiffness: 320, damping: 24 }}
-              className="lg:col-span-5 rounded-3xl p-5 sm:p-6 bg-gradient-to-br from-rose-500 via-pink-500 to-orange-500 text-white shadow-[0_14px_30px_-10px_rgba(244,63,94,0.48)]"
+              className="lg:col-span-5 rounded-3xl p-5 sm:p-7 bg-gradient-to-br from-rose-500 via-pink-500 to-orange-500 text-white shadow-[0_14px_30px_-10px_rgba(244,63,94,0.48)]"
             >
-              <div className="flex items-start justify-between gap-3">
+              <div className="flex items-start justify-between gap-4">
                 <div className="min-w-0">
-                  <div className="text-xs sm:text-sm font-bold text-rose-50 flex items-center gap-1.5">
-                    <LifeBuoy className="w-4 h-4 text-amber-200 shrink-0" />
+                  <div className="text-sm sm:text-base font-bold text-rose-50 flex items-center gap-1.5">
+                    <LifeBuoy className="w-5 h-5 text-amber-200 shrink-0" />
                     <span>Thẻ Đặc Quyền #2</span>
                   </div>
-                  <div className="text-2xl sm:text-3xl font-extrabold tracking-tight mt-1 font-display">
+                  <div className="text-3xl sm:text-4xl font-extrabold tracking-tight mt-1 font-display">
                     THẺ SOS
                   </div>
-                  <p className="text-xs sm:text-sm text-white/90 mt-1">
+                  <p className="text-sm sm:text-base text-white/95 mt-1.5 font-medium">
                     Quyền cứu trợ đặc biệt hoặc gợi ý trực tiếp từ Thầy/Cô!
                   </p>
                 </div>
 
                 {sosEntry ? (
-                  <div className="text-right shrink-0 bg-white/20 backdrop-blur-xs px-3.5 py-2 rounded-2xl border border-white/25">
-                    <div className="text-xs font-bold text-white/90">
+                  <div className="text-right shrink-0 bg-white/20 backdrop-blur-xs px-4 py-2.5 rounded-2xl border border-white/25">
+                    <div className="text-xs sm:text-sm font-bold text-white/95">
                       {GROUP_THEMES[sosEntry.groupNumber].teamLabel}
                     </div>
-                    <div className="text-xl sm:text-2xl font-extrabold font-display">
+                    <div className="text-2xl sm:text-3xl font-extrabold font-display">
                       Nhóm {sosEntry.groupNumber}
                     </div>
-                    <div className="text-sm font-mono font-extrabold tabular-nums text-amber-200">
+                    <div className="text-base sm:text-lg font-mono font-extrabold tabular-nums text-amber-200">
                       {sosEntry.finalScore.toFixed(1)} đ
                     </div>
                   </div>
                 ) : (
-                  <div className="text-xs font-semibold text-white/85 bg-white/15 px-3 py-2 rounded-2xl shrink-0">
+                  <div className="text-sm font-semibold text-white/90 bg-white/15 px-3.5 py-2.5 rounded-2xl shrink-0">
                     Chờ nhóm thứ 2 có điểm
                   </div>
                 )}
@@ -618,53 +675,54 @@ export function DailyGradingTab({
       {/* MODE 1 (DEFAULT): 4-Criteria Grading Matrix (Rows = 8 Groups, Columns = 4 Criteria [1 | 1.5 | 2 | 2.5]) */}
       {viewMode === 'rubric' && (
         <div className="bg-white border border-slate-200 rounded-3xl overflow-hidden shadow-[0_12px_32px_-14px_rgba(15,23,42,0.12)]">
-          <div className="px-4 sm:px-6 py-4 bg-gradient-to-r from-sky-50 via-violet-50 to-amber-50 border-b border-slate-200 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+          <div className="px-5 sm:px-7 py-5 bg-gradient-to-r from-sky-50 via-violet-50 to-amber-50 border-b border-slate-200 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
             <div>
-              <h3 className="text-lg sm:text-xl font-extrabold text-slate-900">
+              <h3 className="text-xl sm:text-2xl font-extrabold text-slate-900">
                 Ma trận Chấm điểm 4 Tiêu chí Hoạt động Nhóm (Tối đa 10 điểm)
               </h3>
-              <p className="text-xs sm:text-sm text-slate-600">
-                Mỗi tiêu chí gồm 4 mức: <strong>1 · 1,5 · 2 · 2,5 điểm</strong>. Chạm trực tiếp vào mức điểm để cộng tự động cho cả nhóm.
+              <p className="text-sm sm:text-base text-slate-600 mt-0.5">
+                Mỗi tiêu chí gồm 4 ô điểm lớn: <strong>1 · 1,5 · 2 · 2,5 điểm</strong>. Bấm trực tiếp vào mức điểm để cộng tự động cho cả nhóm.
               </p>
             </div>
-            <div className="text-sm font-mono font-extrabold tabular-nums text-blue-700 whitespace-nowrap">
-              TB cả lớp: {averageClassScore.toFixed(1)} / 10 đ
+            <div className="flex flex-wrap items-center gap-4 text-sm sm:text-base font-mono font-extrabold tabular-nums whitespace-nowrap">
+              <span className="text-blue-700">TB cả lớp: {averageClassScore.toFixed(1)} / 10 đ</span>
+              <span className="text-emerald-700">TB điểm cộng: +{classStudentBonusStats.avgSessionBonus} đ</span>
             </div>
           </div>
 
           <div className="overflow-x-auto">
-            <table className="w-full text-left border-collapse min-w-[1060px]">
+            <table className="w-full text-left border-collapse min-w-[1180px]">
               <thead>
-                <tr className="border-b-2 border-slate-200 text-sm">
-                  <th className="py-3.5 px-4 bg-slate-100 text-slate-900 font-extrabold w-48">
+                <tr className="border-b-2 border-slate-200 text-sm sm:text-base">
+                  <th className="py-4 px-5 bg-slate-100 text-slate-900 font-extrabold w-[210px]">
                     Nhóm (Hàng)
                   </th>
                   {RUBRIC_CRITERIA.map((col, cIdx) => (
                     <th
                       key={col.key}
-                      className={`py-3.5 px-3 border-l border-slate-200 ${col.headerBg} ${col.headerText}`}
+                      className={`py-4 px-4 border-l border-slate-200 min-w-[185px] ${col.headerBg} ${col.headerText}`}
                     >
-                      <div className="font-extrabold text-sm sm:text-base">
+                      <div className="font-extrabold text-base sm:text-lg leading-snug">
                         {cIdx + 1}. {col.label}
                       </div>
-                      <div className="text-xs font-medium opacity-85 mt-0.5">
-                        {col.shortDesc} (1–2,5đ)
+                      <div className="text-xs sm:text-sm font-semibold opacity-85 mt-0.5">
+                        {col.shortDesc} · Tối đa 2,5đ
                       </div>
                     </th>
                   ))}
-                  <th className="py-3.5 px-3 border-l border-slate-200 bg-slate-100 text-slate-900 font-extrabold text-center w-36">
+                  <th className="py-4 px-3.5 border-l border-slate-200 bg-slate-100 text-slate-900 font-extrabold text-center w-[155px]">
                     Cộng / Trừ
                   </th>
-                  <th className="py-3.5 px-3 border-l border-slate-200 bg-blue-50 text-blue-900 font-extrabold text-center w-28">
+                  <th className="py-4 px-3.5 border-l border-slate-200 bg-blue-50 text-blue-900 font-extrabold text-center w-[125px]">
                     Tổng điểm
                   </th>
-                  <th className="py-3.5 px-4 border-l border-slate-200 bg-slate-100 text-slate-900 font-extrabold text-center w-40">
+                  <th className="py-4 px-4 border-l border-slate-200 bg-slate-100 text-slate-900 font-extrabold text-center w-[175px]">
                     Đặc quyền
                   </th>
                 </tr>
               </thead>
 
-              <tbody className="divide-y divide-slate-200">
+              <tbody className="divide-y-2 divide-slate-200/80">
                 {entries.map((entry) => {
                   const teamTheme = GROUP_THEMES[entry.groupNumber];
                   const members = classStudents.filter((s) => s.groupNumber === entry.groupNumber);
@@ -673,43 +731,46 @@ export function DailyGradingTab({
                   return (
                     <tr
                       key={entry.groupNumber}
-                      className="hover:bg-sky-50/35 transition-colors align-middle"
+                      className="hover:bg-sky-50/30 transition-colors align-middle"
                     >
                       {/* Group Row Label */}
-                      <td className="py-3.5 px-4">
-                        <div className={`rounded-2xl px-3.5 py-2.5 bg-gradient-to-r ${teamTheme.gradientHeader} text-white shadow-xs`}>
-                          <div className="text-base sm:text-lg font-extrabold font-display leading-tight">
+                      <td className="py-4 px-4">
+                        <div className={`rounded-2xl px-4 py-3 bg-gradient-to-r ${teamTheme.gradientHeader} text-white shadow-xs`}>
+                          <div className="text-lg sm:text-xl font-extrabold font-display leading-tight">
                             Nhóm {entry.groupNumber}
                           </div>
-                          <div className="text-xs font-bold text-white/90">
+                          <div className="text-xs sm:text-sm font-bold text-white/95 mt-0.5">
                             {teamTheme.teamLabel} · {members.length} HS
                           </div>
                           {leader && (
-                            <div className="text-[11px] font-bold text-amber-200 flex items-center gap-1 mt-0.5 truncate">
-                              <Crown className="w-3 h-3 shrink-0" />
+                            <div className="text-xs sm:text-sm font-bold text-amber-200 flex items-center gap-1.5 mt-1 truncate">
+                              <Crown className="w-3.5 h-3.5 shrink-0" />
                               <span className="truncate">{leader.name}</span>
                             </div>
                           )}
                         </div>
                       </td>
 
-                      {/* 4 Criteria Columns (each with 1 | 1.5 | 2 | 2.5 buttons) */}
+                      {/* 4 Criteria Columns (spacious 2x2 grid per cell: 1 | 1,5 / 2 | 2,5) */}
                       {RUBRIC_CRITERIA.map((col) => {
                         const selectedVal = entry.criteria?.[col.key] ?? 0;
                         return (
-                          <td key={col.key} className="py-3 px-2.5 border-l border-slate-200">
-                            <div className="grid grid-cols-4 gap-1.5">
+                          <td
+                            key={col.key}
+                            className={`py-4 px-3.5 border-l border-slate-200 ${RUBRIC_COLUMN_TINTS[col.key]}`}
+                          >
+                            <div className="grid grid-cols-2 gap-2">
                               {RUBRIC_SCORE_STEPS.map((stepVal) => {
                                 const isActive = selectedVal === stepVal;
                                 return (
                                   <motion.button
                                     key={stepVal}
-                                    whileTap={{ scale: 0.92 }}
+                                    whileTap={{ scale: 0.94 }}
                                     type="button"
                                     onClick={() =>
                                       handleCriterionSelect(entry.groupNumber, col.key, stepVal)
                                     }
-                                    className={`min-h-[42px] px-1.5 py-2 text-sm font-mono font-extrabold tabular-nums rounded-xl border transition-all cursor-pointer ${
+                                    className={`min-h-[46px] px-3 py-2 text-base sm:text-lg font-mono font-extrabold tabular-nums rounded-xl border transition-all cursor-pointer flex items-center justify-center ${
                                       isActive ? col.activeBtn : col.inactiveBtn
                                     }`}
                                   >
@@ -723,25 +784,25 @@ export function DailyGradingTab({
                       })}
 
                       {/* Quick Bonus / Penalty */}
-                      <td className="py-3 px-2.5 border-l border-slate-200 text-center">
-                        <div className="flex flex-col gap-1.5 items-center">
-                          <div className="flex items-center gap-1">
+                      <td className="py-4 px-3.5 border-l border-slate-200 text-center">
+                        <div className="flex flex-col gap-2 items-center">
+                          <div className="flex items-center gap-1.5 w-full">
                             <button
                               type="button"
                               onClick={() => adjustPoints(entry.groupNumber, 'bonusPoints', 0.5)}
-                              className="px-2.5 py-1 text-xs font-extrabold text-white bg-emerald-600 hover:bg-emerald-700 rounded-lg cursor-pointer"
+                              className="flex-1 min-h-[40px] px-2.5 py-1.5 text-sm font-extrabold text-white bg-emerald-600 hover:bg-emerald-700 rounded-xl cursor-pointer transition-colors"
                             >
                               +0,5
                             </button>
                             <button
                               type="button"
                               onClick={() => adjustPoints(entry.groupNumber, 'penaltyPoints', 0.5)}
-                              className="px-2.5 py-1 text-xs font-extrabold text-white bg-rose-600 hover:bg-rose-700 rounded-lg cursor-pointer"
+                              className="flex-1 min-h-[40px] px-2.5 py-1.5 text-sm font-extrabold text-white bg-rose-600 hover:bg-rose-700 rounded-xl cursor-pointer transition-colors"
                             >
                               −0,5
                             </button>
                           </div>
-                          <div className="text-xs font-mono font-bold tabular-nums text-slate-600">
+                          <div className="text-sm sm:text-base font-mono font-extrabold tabular-nums text-slate-700">
                             <span className="text-emerald-700">+{entry.bonusPoints}</span>
                             {' / '}
                             <span className="text-rose-700">−{entry.penaltyPoints}</span>
@@ -750,23 +811,23 @@ export function DailyGradingTab({
                       </td>
 
                       {/* Total Score (Max 10) */}
-                      <td className="py-3 px-3 border-l border-slate-200 text-center bg-blue-50/40">
+                      <td className="py-4 px-3.5 border-l border-slate-200 text-center bg-blue-50/45">
                         <motion.div
                           key={entry.finalScore}
                           initial={{ scale: 1.22 }}
                           animate={{ scale: 1 }}
                           transition={{ type: 'spring', stiffness: 400, damping: 20 }}
-                          className="text-2xl font-extrabold font-mono tabular-nums text-blue-700"
+                          className="text-3xl font-extrabold font-mono tabular-nums text-blue-700 leading-none"
                         >
                           {entry.finalScore.toFixed(1)}
                         </motion.div>
-                        <div className="text-[11px] font-semibold text-slate-500 font-mono">
+                        <div className="text-xs sm:text-sm font-bold text-slate-500 font-mono mt-1.5">
                           Gốc: {entry.baseScore.toFixed(1)}đ
                         </div>
                       </td>
 
                       {/* Privilege Card Slot */}
-                      <td className="py-3 px-3 border-l border-slate-200 text-center">
+                      <td className="py-4 px-3.5 border-l border-slate-200 text-center">
                         <AnimatePresence mode="wait">
                           {entry.privilegeCard === 'NO_HOMEWORK' ? (
                             <motion.div
@@ -774,13 +835,13 @@ export function DailyGradingTab({
                               initial={{ opacity: 0, scale: 0.85 }}
                               animate={{ opacity: 1, scale: 1 }}
                               exit={{ opacity: 0, scale: 0.85 }}
-                              className="inline-flex flex-col items-center px-3 py-2 rounded-2xl bg-gradient-to-r from-emerald-500 to-teal-600 text-white shadow-sm w-full"
+                              className="inline-flex flex-col items-center px-3.5 py-2.5 rounded-2xl bg-gradient-to-r from-emerald-500 to-teal-600 text-white shadow-sm w-full"
                             >
-                              <span className="text-xs font-extrabold flex items-center gap-1">
-                                <Trophy className="w-3.5 h-3.5 text-amber-200 shrink-0" />
+                              <span className="text-sm font-extrabold flex items-center gap-1.5 whitespace-nowrap">
+                                <Trophy className="w-4 h-4 text-amber-200 shrink-0" />
                                 NO HOMEWORK
                               </span>
-                              <span className="text-[10px] font-medium text-emerald-50">
+                              <span className="text-xs font-semibold text-emerald-50 mt-0.5">
                                 Miễn BTVN
                               </span>
                             </motion.div>
@@ -790,18 +851,18 @@ export function DailyGradingTab({
                               initial={{ opacity: 0, scale: 0.85 }}
                               animate={{ opacity: 1, scale: 1 }}
                               exit={{ opacity: 0, scale: 0.85 }}
-                              className="inline-flex flex-col items-center px-3 py-2 rounded-2xl bg-gradient-to-r from-rose-500 to-orange-500 text-white shadow-sm w-full"
+                              className="inline-flex flex-col items-center px-3.5 py-2.5 rounded-2xl bg-gradient-to-r from-rose-500 to-orange-500 text-white shadow-sm w-full"
                             >
-                              <span className="text-xs font-extrabold flex items-center gap-1">
-                                <LifeBuoy className="w-3.5 h-3.5 text-amber-200 shrink-0" />
+                              <span className="text-sm font-extrabold flex items-center gap-1.5 whitespace-nowrap">
+                                <LifeBuoy className="w-4 h-4 text-amber-200 shrink-0" />
                                 THẺ SOS
                               </span>
-                              <span className="text-[10px] font-medium text-rose-50">
+                              <span className="text-xs font-semibold text-rose-50 mt-0.5">
                                 Cứu trợ đặc biệt
                               </span>
                             </motion.div>
                           ) : (
-                            <span className="text-xs font-medium text-slate-400">—</span>
+                            <span className="text-sm font-semibold text-slate-400">—</span>
                           )}
                         </AnimatePresence>
                       </td>
@@ -816,7 +877,7 @@ export function DailyGradingTab({
 
       {/* MODE 2: Live Activity Grading Cards for 8 Groups */}
       {viewMode === 'live' && (
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
           {entries.map((entry, idx) => {
             const groupMembers = classStudents.filter((s) => s.groupNumber === entry.groupNumber);
             const leader = groupMembers.find((m) => m.isLeader);
@@ -833,9 +894,9 @@ export function DailyGradingTab({
                 className="bg-white border border-slate-200/90 rounded-3xl overflow-hidden flex flex-col justify-between shadow-[0_10px_26px_-12px_rgba(15,23,42,0.1)]"
               >
                 {/* Color-coded Card Header */}
-                <div className={`px-5 py-4 bg-gradient-to-r ${teamTheme.gradientHeader} text-white flex items-start justify-between gap-3`}>
+                <div className={`px-6 py-4 bg-gradient-to-r ${teamTheme.gradientHeader} text-white flex items-start justify-between gap-3`}>
                   <div>
-                    <div className="flex flex-wrap items-center gap-2 text-xs sm:text-sm text-white/90">
+                    <div className="flex flex-wrap items-center gap-2 text-sm text-white/95">
                       <span className="font-bold">{teamTheme.teamLabel}</span>
                       <span aria-hidden="true">·</span>
                       <span className="font-mono tabular-nums">{groupMembers.length} TV</span>
@@ -845,20 +906,20 @@ export function DailyGradingTab({
                         <>
                           <span aria-hidden="true">·</span>
                           <span className="font-bold inline-flex items-center gap-1 text-amber-200">
-                            <Crown className="w-3.5 h-3.5" /> {leader.name}
+                            <Crown className="w-4 h-4" /> {leader.name}
                           </span>
                         </>
                       )}
                     </div>
                     <div className="flex flex-wrap items-center gap-2.5 mt-1">
-                      <h3 className="text-xl sm:text-2xl font-extrabold">Nhóm {entry.groupNumber}</h3>
+                      <h3 className="text-2xl sm:text-3xl font-extrabold">Nhóm {entry.groupNumber}</h3>
                       {entry.privilegeCard === 'NO_HOMEWORK' && (
-                        <span className="px-2.5 py-0.5 rounded-xl bg-emerald-950/35 border border-white/30 text-xs font-extrabold text-amber-200">
+                        <span className="px-3 py-1 rounded-xl bg-emerald-950/35 border border-white/30 text-xs sm:text-sm font-extrabold text-amber-200">
                           NO HOMEWORK
                         </span>
                       )}
                       {entry.privilegeCard === 'SOS' && (
-                        <span className="px-2.5 py-0.5 rounded-xl bg-rose-950/35 border border-white/30 text-xs font-extrabold text-amber-200">
+                        <span className="px-3 py-1 rounded-xl bg-rose-950/35 border border-white/30 text-xs sm:text-sm font-extrabold text-amber-200">
                           THẺ SOS
                         </span>
                       )}
@@ -867,7 +928,7 @@ export function DailyGradingTab({
 
                   {/* Animated Final Score Display */}
                   <div className="text-right shrink-0">
-                    <div className="text-xs font-semibold text-white/85">
+                    <div className="text-sm font-semibold text-white/90">
                       {entry.baseScore} − {entry.penaltyPoints} + {entry.bonusPoints}
                     </div>
                     <motion.div
@@ -875,19 +936,19 @@ export function DailyGradingTab({
                       initial={{ scale: 1.24, y: -2 }}
                       animate={{ scale: 1, y: 0 }}
                       transition={{ type: 'spring', stiffness: 420, damping: 18 }}
-                      className="text-2xl sm:text-3xl font-extrabold font-mono tabular-nums text-white"
+                      className="text-3xl sm:text-4xl font-extrabold font-mono tabular-nums text-white"
                     >
                       {entry.finalScore.toFixed(1)} đ
                     </motion.div>
                   </div>
                 </div>
 
-                <div className="p-4 sm:p-5 space-y-4">
+                <div className="p-5 sm:p-6 space-y-4">
                   {/* Base Score + Quick Bonus + Quick Penalty */}
-                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3.5">
                     {/* Điểm cho */}
-                    <div className="p-3.5 bg-slate-50 border border-slate-200 rounded-2xl">
-                      <label className="block text-xs sm:text-sm font-bold text-slate-700 mb-1.5">
+                    <div className="p-4 bg-slate-50 border border-slate-200 rounded-2xl">
+                      <label className="block text-sm font-bold text-slate-800 mb-2">
                         Điểm cho (0–10)
                       </label>
                       <input
@@ -901,15 +962,15 @@ export function DailyGradingTab({
                             baseScore: Math.min(10, Math.max(0, Number(e.target.value) || 0)),
                           })
                         }
-                        className="w-full px-2.5 py-1.5 text-base font-mono font-extrabold tabular-nums bg-white border border-slate-200 rounded-xl"
+                        className="w-full px-3 py-2 text-lg font-mono font-extrabold tabular-nums bg-white border border-slate-200 rounded-xl"
                       />
-                      <div className="flex items-center gap-1 mt-1.5">
+                      <div className="flex items-center gap-1.5 mt-2">
                         {[7, 8, 9, 10].map((v) => (
                           <button
                             key={v}
                             type="button"
                             onClick={() => updateEntry(entry.groupNumber, { baseScore: v })}
-                            className={`flex-1 py-1 text-xs font-mono font-bold rounded-lg border transition-colors ${
+                            className={`flex-1 py-1.5 text-sm font-mono font-bold rounded-lg border transition-colors ${
                               entry.baseScore === v
                                 ? 'bg-blue-600 text-white border-blue-600'
                                 : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-100'
@@ -922,40 +983,40 @@ export function DailyGradingTab({
                     </div>
 
                     {/* Điểm cộng (+) */}
-                    <div className="p-3.5 bg-emerald-50/80 border border-emerald-200 rounded-2xl">
-                      <div className="flex items-center justify-between mb-1.5">
-                        <span className="text-xs sm:text-sm font-bold text-emerald-800">Điểm cộng (+)</span>
+                    <div className="p-4 bg-emerald-50/80 border border-emerald-200 rounded-2xl">
+                      <div className="flex items-center justify-between mb-2">
+                        <span className="text-sm font-bold text-emerald-800">Điểm cộng (+)</span>
                         <motion.span
                           key={entry.bonusPoints}
                           initial={{ scale: 1.25 }}
                           animate={{ scale: 1 }}
-                          className="text-base font-mono font-extrabold tabular-nums text-emerald-700"
+                          className="text-lg font-mono font-extrabold tabular-nums text-emerald-700"
                         >
                           +{entry.bonusPoints}
                         </motion.span>
                       </div>
-                      <div className="grid grid-cols-3 gap-1">
+                      <div className="grid grid-cols-3 gap-1.5">
                         <motion.button
                           whileTap={{ scale: 0.9 }}
                           type="button"
                           onClick={() => adjustPoints(entry.groupNumber, 'bonusPoints', 0.5)}
-                          className="py-2 text-xs font-bold text-white bg-emerald-600 hover:bg-emerald-700 rounded-xl flex items-center justify-center gap-0.5"
+                          className="py-2.5 text-sm font-bold text-white bg-emerald-600 hover:bg-emerald-700 rounded-xl flex items-center justify-center gap-0.5"
                         >
-                          <Plus className="w-3 h-3" />0.5
+                          <Plus className="w-3.5 h-3.5" />0.5
                         </motion.button>
                         <motion.button
                           whileTap={{ scale: 0.9 }}
                           type="button"
                           onClick={() => adjustPoints(entry.groupNumber, 'bonusPoints', 1)}
-                          className="py-2 text-xs font-bold text-white bg-emerald-600 hover:bg-emerald-700 rounded-xl flex items-center justify-center gap-0.5"
+                          className="py-2.5 text-sm font-bold text-white bg-emerald-600 hover:bg-emerald-700 rounded-xl flex items-center justify-center gap-0.5"
                         >
-                          <Plus className="w-3 h-3" />1
+                          <Plus className="w-3.5 h-3.5" />1
                         </motion.button>
                         <motion.button
                           whileTap={{ scale: 0.9 }}
                           type="button"
                           onClick={() => adjustPoints(entry.groupNumber, 'bonusPoints', -0.5)}
-                          className="py-2 text-xs font-semibold text-emerald-800 bg-white border border-emerald-200 hover:bg-emerald-100 rounded-xl"
+                          className="py-2.5 text-sm font-semibold text-emerald-800 bg-white border border-emerald-200 hover:bg-emerald-100 rounded-xl"
                         >
                           -0.5
                         </motion.button>
@@ -963,40 +1024,40 @@ export function DailyGradingTab({
                     </div>
 
                     {/* Điểm trừ (-) */}
-                    <div className="p-3.5 bg-rose-50/80 border border-rose-200 rounded-2xl">
-                      <div className="flex items-center justify-between mb-1.5">
-                        <span className="text-xs sm:text-sm font-bold text-rose-800">Điểm trừ (−)</span>
+                    <div className="p-4 bg-rose-50/80 border border-rose-200 rounded-2xl">
+                      <div className="flex items-center justify-between mb-2">
+                        <span className="text-sm font-bold text-rose-800">Điểm trừ (−)</span>
                         <motion.span
                           key={entry.penaltyPoints}
                           initial={{ scale: 1.25 }}
                           animate={{ scale: 1 }}
-                          className="text-base font-mono font-extrabold tabular-nums text-rose-700"
+                          className="text-lg font-mono font-extrabold tabular-nums text-rose-700"
                         >
                           −{entry.penaltyPoints}
                         </motion.span>
                       </div>
-                      <div className="grid grid-cols-3 gap-1">
+                      <div className="grid grid-cols-3 gap-1.5">
                         <motion.button
                           whileTap={{ scale: 0.9 }}
                           type="button"
                           onClick={() => adjustPoints(entry.groupNumber, 'penaltyPoints', 0.5)}
-                          className="py-2 text-xs font-bold text-white bg-rose-600 hover:bg-rose-700 rounded-xl flex items-center justify-center gap-0.5"
+                          className="py-2.5 text-sm font-bold text-white bg-rose-600 hover:bg-rose-700 rounded-xl flex items-center justify-center gap-0.5"
                         >
-                          <Minus className="w-3 h-3" />0.5
+                          <Minus className="w-3.5 h-3.5" />0.5
                         </motion.button>
                         <motion.button
                           whileTap={{ scale: 0.9 }}
                           type="button"
                           onClick={() => adjustPoints(entry.groupNumber, 'penaltyPoints', 1)}
-                          className="py-2 text-xs font-bold text-white bg-rose-600 hover:bg-rose-700 rounded-xl flex items-center justify-center gap-0.5"
+                          className="py-2.5 text-sm font-bold text-white bg-rose-600 hover:bg-rose-700 rounded-xl flex items-center justify-center gap-0.5"
                         >
-                          <Minus className="w-3 h-3" />1
+                          <Minus className="w-3.5 h-3.5" />1
                         </motion.button>
                         <motion.button
                           whileTap={{ scale: 0.9 }}
                           type="button"
                           onClick={() => adjustPoints(entry.groupNumber, 'penaltyPoints', -0.5)}
-                          className="py-2 text-xs font-semibold text-rose-800 bg-white border border-rose-200 hover:bg-rose-100 rounded-xl"
+                          className="py-2.5 text-sm font-semibold text-rose-800 bg-white border border-rose-200 hover:bg-rose-100 rounded-xl"
                         >
                           Hoàn
                         </motion.button>
@@ -1005,9 +1066,9 @@ export function DailyGradingTab({
                   </div>
 
                   {/* Members preview & Feedback */}
-                  <div className="space-y-2">
-                    <div className="text-xs sm:text-sm text-slate-600">
-                      <span className="font-bold text-slate-800">Học sinh nhận {entry.finalScore.toFixed(1)}đ: </span>
+                  <div className="space-y-2.5">
+                    <div className="text-sm text-slate-600 leading-relaxed">
+                      <span className="font-bold text-slate-900">Học sinh nhận {entry.finalScore.toFixed(1)}đ: </span>
                       {groupMembers.length > 0
                         ? groupMembers.map((m) => m.name).join(', ')
                         : 'Chưa có thành viên'}
@@ -1017,7 +1078,7 @@ export function DailyGradingTab({
                       value={entry.feedback}
                       onChange={(e) => updateEntry(entry.groupNumber, { feedback: e.target.value })}
                       placeholder="Nhận xét hoạt động của nhóm..."
-                      className="w-full px-3.5 py-2 text-sm border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-600"
+                      className="w-full px-4 py-2.5 text-sm sm:text-base border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-600"
                     />
                   </div>
                 </div>
@@ -1030,12 +1091,12 @@ export function DailyGradingTab({
       {/* MODE 3: Spreadsheet-Style Gradebook Table + Excel Export */}
       {viewMode === 'spreadsheet' && (
         <div className="bg-white border border-slate-200 rounded-3xl overflow-hidden shadow-[0_10px_28px_-12px_rgba(15,23,42,0.1)]">
-          <div className="p-4 sm:px-6 bg-slate-50 border-b border-slate-200 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+          <div className="p-5 sm:px-6 bg-slate-50 border-b border-slate-200 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
             <div className="flex flex-wrap items-center gap-1 p-1 bg-white border border-slate-200 rounded-xl w-full sm:w-auto">
               <button
                 type="button"
                 onClick={() => setSheetScope('students')}
-                className={`flex-1 sm:flex-none px-3.5 py-2 text-xs sm:text-sm font-bold rounded-lg transition-colors whitespace-nowrap ${
+                className={`flex-1 sm:flex-none px-4 py-2 text-sm font-bold rounded-lg transition-colors whitespace-nowrap ${
                   sheetScope === 'students' ? 'bg-blue-600 text-white' : 'text-slate-600'
                 }`}
               >
@@ -1044,7 +1105,7 @@ export function DailyGradingTab({
               <button
                 type="button"
                 onClick={() => setSheetScope('groups')}
-                className={`flex-1 sm:flex-none px-3.5 py-2 text-xs sm:text-sm font-bold rounded-lg transition-colors whitespace-nowrap ${
+                className={`flex-1 sm:flex-none px-4 py-2 text-sm font-bold rounded-lg transition-colors whitespace-nowrap ${
                   sheetScope === 'groups' ? 'bg-blue-600 text-white' : 'text-slate-600'
                 }`}
               >
@@ -1055,9 +1116,9 @@ export function DailyGradingTab({
             <button
               type="button"
               onClick={() =>
-                exportSessionGradebookToExcel(classId, buildCurrentGradeRecord(), classStudents)
+                exportSessionGradebookToExcel(classId, buildCurrentGradeRecord(), classStudents, grades)
               }
-              className="inline-flex items-center justify-center gap-1.5 px-4 py-2 text-sm font-bold text-white bg-emerald-600 hover:bg-emerald-700 rounded-xl whitespace-nowrap"
+              className="inline-flex items-center justify-center gap-1.5 px-4 py-2.5 text-sm sm:text-base font-bold text-white bg-emerald-600 hover:bg-emerald-700 rounded-xl whitespace-nowrap"
             >
               <Download className="w-4 h-4" />
               Xuất Excel Danh sách Học sinh (.xlsx)
@@ -1066,19 +1127,19 @@ export function DailyGradingTab({
 
           {sheetScope === 'groups' ? (
             <div className="overflow-x-auto">
-              <table className="w-full text-left text-sm border-collapse min-w-[900px]">
+              <table className="w-full text-left text-sm sm:text-[15px] border-collapse min-w-[1040px]">
                 <thead>
-                  <tr className="bg-slate-100 border-b border-slate-300 text-slate-800 font-extrabold">
-                    <th className="py-3 px-3 border-r border-slate-200">Nhóm</th>
-                    <th className="py-3 px-3 border-r border-slate-200">Nhóm trưởng</th>
-                    <th className="py-3 px-3 border-r border-slate-200 text-right">Tham gia</th>
-                    <th className="py-3 px-3 border-r border-slate-200 text-right">Hợp tác</th>
-                    <th className="py-3 px-3 border-r border-slate-200 text-right">Chính xác</th>
-                    <th className="py-3 px-3 border-r border-slate-200 text-right">Sáng tạo</th>
-                    <th className="py-3 px-3 border-r border-slate-200 text-right">Cộng/Trừ</th>
-                    <th className="py-3 px-3 border-r border-slate-200 text-right text-blue-700">Tổng</th>
-                    <th className="py-3 px-3 border-r border-slate-200 text-center">Đặc quyền</th>
-                    <th className="py-3 px-3">Nhận xét</th>
+                  <tr className="bg-slate-100 border-b-2 border-slate-300 text-slate-900 font-extrabold">
+                    <th className="py-3.5 px-4 border-r border-slate-200">Nhóm</th>
+                    <th className="py-3.5 px-4 border-r border-slate-200">Nhóm trưởng</th>
+                    <th className="py-3.5 px-4 border-r border-slate-200 text-right">Tham gia</th>
+                    <th className="py-3.5 px-4 border-r border-slate-200 text-right">Hợp tác</th>
+                    <th className="py-3.5 px-4 border-r border-slate-200 text-right">Chính xác</th>
+                    <th className="py-3.5 px-4 border-r border-slate-200 text-right">Sáng tạo</th>
+                    <th className="py-3.5 px-4 border-r border-slate-200 text-right">Cộng / Trừ</th>
+                    <th className="py-3.5 px-4 border-r border-slate-200 text-right text-blue-700">Tổng</th>
+                    <th className="py-3.5 px-4 border-r border-slate-200 text-center">Đặc quyền</th>
+                    <th className="py-3.5 px-4">Nhận xét</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-200">
@@ -1086,33 +1147,33 @@ export function DailyGradingTab({
                     const members = classStudents.filter((s) => s.groupNumber === e.groupNumber);
                     const leader = members.find((m) => m.isLeader);
                     return (
-                      <tr key={e.groupNumber} className="hover:bg-blue-50/40">
-                        <td className="py-3 px-3 border-r border-slate-200 font-extrabold text-slate-900">
+                      <tr key={e.groupNumber} className="even:bg-slate-50/50 hover:bg-blue-50/40">
+                        <td className="py-3.5 px-4 border-r border-slate-200 font-extrabold text-slate-900 whitespace-nowrap">
                           Nhóm {e.groupNumber}
                         </td>
-                        <td className="py-3 px-3 border-r border-slate-200 text-slate-700">
+                        <td className="py-3.5 px-4 border-r border-slate-200 text-slate-700">
                           {leader ? leader.name : '—'}
                         </td>
-                        <td className="py-3 px-3 border-r border-slate-200 text-right font-mono tabular-nums">
+                        <td className="py-3.5 px-4 border-r border-slate-200 text-right font-mono tabular-nums">
                           {e.criteria?.participation ? e.criteria.participation : '—'}
                         </td>
-                        <td className="py-3 px-3 border-r border-slate-200 text-right font-mono tabular-nums">
+                        <td className="py-3.5 px-4 border-r border-slate-200 text-right font-mono tabular-nums">
                           {e.criteria?.collaboration ? e.criteria.collaboration : '—'}
                         </td>
-                        <td className="py-3 px-3 border-r border-slate-200 text-right font-mono tabular-nums">
+                        <td className="py-3.5 px-4 border-r border-slate-200 text-right font-mono tabular-nums">
                           {e.criteria?.accuracy ? e.criteria.accuracy : '—'}
                         </td>
-                        <td className="py-3 px-3 border-r border-slate-200 text-right font-mono tabular-nums">
+                        <td className="py-3.5 px-4 border-r border-slate-200 text-right font-mono tabular-nums">
                           {e.criteria?.creativity ? e.criteria.creativity : '—'}
                         </td>
-                        <td className="py-3 px-3 border-r border-slate-200 text-right font-mono tabular-nums">
-                          <span className="text-emerald-700">+{e.bonusPoints}</span> /{' '}
-                          <span className="text-rose-700">−{e.penaltyPoints}</span>
+                        <td className="py-3.5 px-4 border-r border-slate-200 text-right font-mono tabular-nums whitespace-nowrap">
+                          <span className="text-emerald-700 font-bold">+{e.bonusPoints}</span> /{' '}
+                          <span className="text-rose-700 font-bold">−{e.penaltyPoints}</span>
                         </td>
-                        <td className="py-3 px-3 border-r border-slate-200 text-right font-mono font-extrabold tabular-nums text-blue-700 text-base">
+                        <td className="py-3.5 px-4 border-r border-slate-200 text-right font-mono font-extrabold tabular-nums text-blue-700 text-lg">
                           {e.finalScore.toFixed(1)}
                         </td>
-                        <td className="py-3 px-3 border-r border-slate-200 text-center font-bold">
+                        <td className="py-3.5 px-4 border-r border-slate-200 text-center font-bold whitespace-nowrap">
                           {e.privilegeCard === 'NO_HOMEWORK' ? (
                             <span className="text-emerald-700">No Homework</span>
                           ) : e.privilegeCard === 'SOS' ? (
@@ -1121,7 +1182,7 @@ export function DailyGradingTab({
                             '—'
                           )}
                         </td>
-                        <td className="py-3 px-3 text-slate-600">{e.feedback || '—'}</td>
+                        <td className="py-3.5 px-4 text-slate-600">{e.feedback || '—'}</td>
                       </tr>
                     );
                   })}
@@ -1130,20 +1191,25 @@ export function DailyGradingTab({
             </div>
           ) : (
             <div className="overflow-x-auto">
-              <table className="w-full text-left text-sm border-collapse min-w-[920px]">
+              <table className="w-full text-left text-sm sm:text-[15px] border-collapse min-w-[1140px]">
                 <thead>
-                  <tr className="bg-slate-100 border-b border-slate-300 text-slate-800 font-extrabold">
-                    <th className="py-3 px-3 border-r border-slate-200 text-center">STT</th>
-                    <th className="py-3 px-3 border-r border-slate-200">Họ và tên</th>
-                    <th className="py-3 px-3 border-r border-slate-200">Ngày sinh</th>
-                    <th className="py-3 px-3 border-r border-slate-200 text-center">Tổ</th>
-                    <th className="py-3 px-3 border-r border-slate-200 text-center">Nhóm</th>
-                    <th className="py-3 px-3 border-r border-slate-200">Vai trò</th>
-                    <th className="py-3 px-3 border-r border-slate-200 text-right">Điểm cho</th>
-                    <th className="py-3 px-3 border-r border-slate-200 text-right text-rose-700">Trừ</th>
-                    <th className="py-3 px-3 border-r border-slate-200 text-right text-emerald-700">Cộng</th>
-                    <th className="py-3 px-3 border-r border-slate-200 text-right text-blue-700">Điểm (tối đa 10)</th>
-                    <th className="py-3 px-3 text-center">Thẻ đặc quyền</th>
+                  <tr className="bg-slate-100 border-b-2 border-slate-300 text-slate-900 font-extrabold">
+                    <th className="py-3.5 px-3.5 border-r border-slate-200 text-center">STT</th>
+                    <th className="py-3.5 px-4 border-r border-slate-200">Họ và tên</th>
+                    <th className="py-3.5 px-4 border-r border-slate-200">Ngày sinh</th>
+                    <th className="py-3.5 px-3 border-r border-slate-200 text-center">Tổ</th>
+                    <th className="py-3.5 px-3 border-r border-slate-200 text-center">Nhóm</th>
+                    <th className="py-3.5 px-4 border-r border-slate-200">Vai trò</th>
+                    <th className="py-3.5 px-4 border-r border-slate-200 text-right">Điểm cho</th>
+                    <th className="py-3.5 px-4 border-r border-slate-200 text-right text-rose-700">Trừ</th>
+                    <th className="py-3.5 px-4 border-r border-slate-200 text-right text-emerald-700">Cộng</th>
+                    <th className="py-3.5 px-4 border-r border-slate-200 text-right text-teal-700">
+                      TBC Điểm cộng
+                    </th>
+                    <th className="py-3.5 px-4 border-r border-slate-200 text-right text-blue-700">
+                      Điểm (tối đa 10)
+                    </th>
+                    <th className="py-3.5 px-4 text-center">Thẻ đặc quyền</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-200">
@@ -1159,40 +1225,44 @@ export function DailyGradingTab({
                       const base = ge?.baseScore ?? 0;
                       const penalty = ge?.penaltyPoints ?? 0;
                       const bonus = ge?.bonusPoints ?? 0;
+                      const avgBonus = studentAvgBonusMap.get(stu.id) ?? bonus;
                       const finalScore = ge?.finalScore ?? 0;
                       return (
-                        <tr key={stu.id} className="hover:bg-blue-50/40">
-                          <td className="py-2.5 px-3 border-r border-slate-200 text-center font-mono tabular-nums text-slate-500">
+                        <tr key={stu.id} className="even:bg-slate-50/50 hover:bg-blue-50/40">
+                          <td className="py-3 px-3.5 border-r border-slate-200 text-center font-mono tabular-nums text-slate-500">
                             {idx + 1}
                           </td>
-                          <td className="py-2.5 px-3 border-r border-slate-200 font-bold text-slate-900">
+                          <td className="py-3 px-4 border-r border-slate-200 font-bold text-slate-900">
                             {stu.name}
                           </td>
-                          <td className="py-2.5 px-3 border-r border-slate-200 font-mono tabular-nums text-slate-600">
+                          <td className="py-3 px-4 border-r border-slate-200 font-mono tabular-nums text-slate-600">
                             {stu.birthDate || '—'}
                           </td>
-                          <td className="py-2.5 px-3 border-r border-slate-200 text-center font-mono">
+                          <td className="py-3 px-3 border-r border-slate-200 text-center font-mono">
                             {stu.to}
                           </td>
-                          <td className="py-2.5 px-3 border-r border-slate-200 text-center font-mono font-extrabold text-blue-700">
+                          <td className="py-3 px-3 border-r border-slate-200 text-center font-mono font-extrabold text-blue-700">
                             {stu.groupNumber}
                           </td>
-                          <td className="py-2.5 px-3 border-r border-slate-200 text-slate-600">
+                          <td className="py-3 px-4 border-r border-slate-200 text-slate-600">
                             {stu.isLeader ? 'Nhóm trưởng' : 'Thành viên'}
                           </td>
-                          <td className="py-2.5 px-3 border-r border-slate-200 text-right font-mono tabular-nums">
+                          <td className="py-3 px-4 border-r border-slate-200 text-right font-mono tabular-nums">
                             {base.toFixed(1)}
                           </td>
-                          <td className="py-2.5 px-3 border-r border-slate-200 text-right font-mono tabular-nums text-rose-700">
+                          <td className="py-3 px-4 border-r border-slate-200 text-right font-mono tabular-nums text-rose-700">
                             −{penalty.toFixed(1)}
                           </td>
-                          <td className="py-2.5 px-3 border-r border-slate-200 text-right font-mono tabular-nums text-emerald-700">
+                          <td className="py-3 px-4 border-r border-slate-200 text-right font-mono tabular-nums text-emerald-700">
                             +{bonus.toFixed(1)}
                           </td>
-                          <td className="py-2.5 px-3 border-r border-slate-200 text-right font-mono font-extrabold tabular-nums text-blue-700 text-base">
+                          <td className="py-3 px-4 border-r border-slate-200 text-right font-mono font-extrabold tabular-nums text-teal-700 bg-teal-50/40">
+                            {avgBonus.toFixed(2)}
+                          </td>
+                          <td className="py-3 px-4 border-r border-slate-200 text-right font-mono font-extrabold tabular-nums text-blue-700 text-base">
                             {finalScore.toFixed(1)}
                           </td>
-                          <td className="py-2.5 px-3 text-center text-xs font-extrabold">
+                          <td className="py-3 px-4 text-center text-sm font-extrabold whitespace-nowrap">
                             {ge?.privilegeCard === 'NO_HOMEWORK' ? (
                               <span className="text-emerald-700">No Homework</span>
                             ) : ge?.privilegeCard === 'SOS' ? (
@@ -1205,6 +1275,33 @@ export function DailyGradingTab({
                       );
                     })}
                 </tbody>
+                {classStudents.length > 0 && (
+                  <tfoot>
+                    <tr className="bg-sky-50 border-t-2 border-sky-200 font-extrabold text-slate-900">
+                      <td colSpan={6} className="py-3.5 px-4 border-r border-sky-200 text-right">
+                        TRUNG BÌNH CỘNG TOÀN LỚP ({classStudents.length} HS):
+                      </td>
+                      <td className="py-3.5 px-4 border-r border-sky-200 text-right font-mono tabular-nums">
+                        —
+                      </td>
+                      <td className="py-3.5 px-4 border-r border-sky-200 text-right font-mono tabular-nums">
+                        —
+                      </td>
+                      <td className="py-3.5 px-4 border-r border-sky-200 text-right font-mono tabular-nums text-emerald-700">
+                        +{classStudentBonusStats.avgSessionBonus.toFixed(2)}
+                      </td>
+                      <td className="py-3.5 px-4 border-r border-sky-200 text-right font-mono tabular-nums text-teal-800 bg-teal-100/60">
+                        {classStudentBonusStats.avgCumulativeBonus.toFixed(2)}
+                      </td>
+                      <td className="py-3.5 px-4 border-r border-sky-200 text-right font-mono tabular-nums text-blue-800 text-base">
+                        {classStudentBonusStats.avgTotal.toFixed(2)}
+                      </td>
+                      <td className="py-3.5 px-4 text-center text-xs text-slate-500">
+                        Xuất Excel có sẵn cột này
+                      </td>
+                    </tr>
+                  </tfoot>
+                )}
               </table>
             </div>
           )}

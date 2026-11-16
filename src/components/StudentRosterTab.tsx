@@ -424,47 +424,47 @@ export function StudentRosterTab({ classId, students, onRefreshWorkspace }: Stud
       )}
 
       {/* Students Table */}
-      <div className="bg-white border border-slate-200 rounded-2xl overflow-hidden">
+      <div className="bg-white border border-slate-200 rounded-3xl overflow-hidden shadow-xs">
         <div className="overflow-x-auto">
-          <table className="w-full text-left text-sm border-collapse">
+          <table className="w-full text-left text-sm sm:text-[15px] border-collapse">
             <thead>
-              <tr className="bg-slate-50 border-b border-slate-200 text-xs font-semibold text-slate-600">
-                <th className="py-3 px-4">Họ và tên</th>
-                <th className="py-3 px-4">Ngày sinh</th>
-                <th className="py-3 px-4">Tổ</th>
-                <th className="py-3 px-4">Nhóm (1–8)</th>
-                <th className="py-3 px-4 text-center">Nhóm trưởng</th>
-                <th className="py-3 px-4">Điểm đánh giá (1–10)</th>
-                <th className="py-3 px-4 text-right">Thao tác</th>
+              <tr className="bg-slate-100 border-b-2 border-slate-200 text-xs sm:text-sm font-extrabold text-slate-700">
+                <th className="py-3.5 px-5">Họ và tên</th>
+                <th className="py-3.5 px-4">Ngày sinh</th>
+                <th className="py-3.5 px-4">Tổ</th>
+                <th className="py-3.5 px-4">Nhóm (1–8)</th>
+                <th className="py-3.5 px-4 text-center">Nhóm trưởng</th>
+                <th className="py-3.5 px-4">Điểm đánh giá (1–10)</th>
+                <th className="py-3.5 px-5 text-right">Thao tác</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-slate-100">
+            <tbody className="divide-y divide-slate-200/80">
               {filtered.length === 0 ? (
                 <tr>
-                  <td colSpan={7} className="py-10 text-center text-sm text-slate-500">
+                  <td colSpan={7} className="py-10 text-center text-base text-slate-500">
                     Chưa có học sinh nào trong danh sách phù hợp.
                   </td>
                 </tr>
               ) : (
                 filtered.map((stu) => (
-                  <tr key={stu.id} className="hover:bg-slate-50/80 transition-colors">
-                    <td className="py-3 px-4 whitespace-nowrap">
-                      <div className="font-semibold text-slate-900 flex items-center gap-1.5">
+                  <tr key={stu.id} className="even:bg-slate-50/45 hover:bg-sky-50/50 transition-colors">
+                    <td className="py-3.5 px-5 whitespace-nowrap">
+                      <div className="font-bold text-slate-900 flex items-center gap-1.5">
                         {stu.name}
-                        {stu.isLeader && <Crown className="w-3.5 h-3.5 text-amber-500 shrink-0" />}
+                        {stu.isLeader && <Crown className="w-4 h-4 text-amber-500 shrink-0" />}
                       </div>
                       <div className="text-xs font-mono text-slate-400">{stu.studentCode}</div>
                     </td>
-                    <td className="py-3 px-4 font-mono tabular-nums text-xs text-slate-600 whitespace-nowrap">
+                    <td className="py-3.5 px-4 font-mono tabular-nums text-sm text-slate-600 whitespace-nowrap">
                       {stu.birthDate || '—'}
                     </td>
-                    <td className="py-3 px-4 font-mono tabular-nums text-slate-700 whitespace-nowrap">
+                    <td className="py-3.5 px-4 font-mono tabular-nums text-slate-700 font-semibold whitespace-nowrap">
                       Tổ {stu.to}
                     </td>
-                    <td className="py-3 px-4 font-mono tabular-nums text-blue-700 font-bold whitespace-nowrap">
+                    <td className="py-3.5 px-4 font-mono tabular-nums text-blue-700 font-extrabold whitespace-nowrap">
                       Nhóm {stu.groupNumber}
                     </td>
-                    <td className="py-3 px-4 text-center whitespace-nowrap">
+                    <td className="py-3.5 px-4 text-center whitespace-nowrap">
                       <label className="inline-flex items-center gap-1.5 cursor-pointer">
                         <input
                           type="checkbox"
@@ -472,10 +472,10 @@ export function StudentRosterTab({ classId, students, onRefreshWorkspace }: Stud
                           onChange={() => handleToggleLeader(stu)}
                           className="w-4 h-4 rounded border-slate-300 text-amber-600 focus:ring-amber-500 cursor-pointer"
                         />
-                        <span className="text-xs text-slate-500">{stu.isLeader ? 'Có' : ''}</span>
+                        <span className="text-xs sm:text-sm font-semibold text-amber-700">{stu.isLeader ? 'NT' : ''}</span>
                       </label>
                     </td>
-                    <td className="py-3 px-4 whitespace-nowrap">
+                    <td className="py-3.5 px-4 whitespace-nowrap">
                       <input
                         type="number"
                         min={1}
@@ -483,16 +483,16 @@ export function StudentRosterTab({ classId, students, onRefreshWorkspace }: Stud
                         step="0.5"
                         value={stu.score ?? 7}
                         onChange={(e) => handleQuickScoreChange(stu, e.target.value)}
-                        className="w-20 px-2.5 py-1 text-xs font-mono font-bold tabular-nums border border-slate-200 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-blue-600"
+                        className="w-24 px-3 py-1.5 text-sm font-mono font-extrabold tabular-nums border border-slate-200 rounded-xl bg-white focus:outline-none focus:ring-2 focus:ring-blue-600"
                       />
                     </td>
-                    <td className="py-3 px-4 text-right whitespace-nowrap">
+                    <td className="py-3.5 px-5 text-right whitespace-nowrap">
                       <div className="inline-flex items-center gap-1.5">
                         <button
                           type="button"
                           onClick={() => openEditModal(stu)}
                           title="Chỉnh sửa"
-                          className="p-1.5 text-slate-500 hover:text-blue-700 hover:bg-blue-50 rounded-lg"
+                          className="p-2 text-slate-500 hover:text-blue-700 hover:bg-blue-50 rounded-xl"
                         >
                           <Edit3 className="w-4 h-4" />
                         </button>
@@ -500,7 +500,7 @@ export function StudentRosterTab({ classId, students, onRefreshWorkspace }: Stud
                           type="button"
                           onClick={() => handleDeleteStudent(stu.id)}
                           title="Xóa"
-                          className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg"
+                          className="p-2 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-xl"
                         >
                           <Trash2 className="w-4 h-4" />
                         </button>

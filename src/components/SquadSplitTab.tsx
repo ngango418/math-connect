@@ -162,12 +162,12 @@ export function SquadSplitTab({ classId, students, onRefreshWorkspace }: SquadSp
         transition={{ type: 'spring', stiffness: 300, damping: 24 }}
         className={`${teamTheme.softBg} border ${teamTheme.border} rounded-2xl overflow-hidden`}
       >
-        <div className={`px-4 py-3 bg-gradient-to-r ${teamTheme.gradientHeader} text-white flex items-center justify-between gap-2`}>
+        <div className={`px-5 py-3.5 bg-gradient-to-r ${teamTheme.gradientHeader} text-white flex items-center justify-between gap-2`}>
           <div>
-            <h4 className="text-sm font-extrabold">
+            <h4 className="text-base sm:text-lg font-extrabold">
               Nhóm {mappedGroup} · {teamTheme.teamLabel}
             </h4>
-            <div className="text-xs font-mono tabular-nums text-white/90 flex items-center gap-2 mt-0.5">
+            <div className="text-xs sm:text-sm font-mono tabular-nums text-white/95 flex items-center gap-2 mt-0.5">
               <span>{bucket.count} HS</span>
               <span aria-hidden="true">·</span>
               <span>
@@ -186,7 +186,7 @@ export function SquadSplitTab({ classId, students, onRefreshWorkspace }: SquadSp
                 [`${toNum}-${sideKey}`]: Number(e.target.value) as GroupNumber,
               }))
             }
-            className="px-2 py-1 text-xs font-bold text-slate-900 border border-white/40 rounded-xl bg-white"
+            className="px-2.5 py-1.5 text-xs sm:text-sm font-bold text-slate-900 border border-white/40 rounded-xl bg-white"
           >
             {GROUP_NUMBERS.map((g) => (
               <option key={g} value={g}>
@@ -196,20 +196,20 @@ export function SquadSplitTab({ classId, students, onRefreshWorkspace }: SquadSp
           </select>
         </div>
 
-        <div className="p-4 space-y-1.5">
+        <div className="p-4 space-y-2">
           {bucket.students.length === 0 ? (
-            <div className="text-xs text-slate-400">Chưa có thành viên</div>
+            <div className="text-sm text-slate-400">Chưa có thành viên</div>
           ) : (
             bucket.students.map((s) => (
               <div
                 key={s.id}
-                className="flex items-center justify-between text-xs bg-white/80 px-2.5 py-1.5 rounded-xl border border-white"
+                className="flex items-center justify-between text-sm bg-white/85 px-3 py-2 rounded-xl border border-white"
               >
-                <span className="font-semibold text-slate-800 flex items-center gap-1 truncate">
+                <span className="font-semibold text-slate-900 flex items-center gap-1.5 truncate">
                   {s.name}
-                  {s.isLeader && <Crown className="w-3.5 h-3.5 text-amber-500 shrink-0" />}
+                  {s.isLeader && <Crown className="w-4 h-4 text-amber-500 shrink-0" />}
                 </span>
-                <span className={`font-mono font-bold tabular-nums shrink-0 ml-2 ${teamTheme.textAccent}`}>
+                <span className={`font-mono font-extrabold tabular-nums shrink-0 ml-2 ${teamTheme.textAccent}`}>
                   {s.score} đ
                 </span>
               </div>

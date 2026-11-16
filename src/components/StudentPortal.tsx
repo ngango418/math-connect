@@ -197,7 +197,7 @@ export function StudentPortal({
   const allCompleted = totalCards > 0 && completedCount === totalCards;
 
   return (
-    <div className="max-w-5xl mx-auto px-3.5 sm:px-6 py-5 sm:py-7 space-y-5 sm:space-y-6">
+    <div className="max-w-[1440px] mx-auto px-4 sm:px-6 lg:px-10 py-6 sm:py-8 space-y-6">
       {/* Vibrant Group Quest Banner */}
       <motion.div
         initial={{ opacity: 0, y: 14 }}
@@ -326,19 +326,19 @@ export function StudentPortal({
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-5 sm:gap-6 items-start">
             {/* Left 8 cols: Interactive Mission Cards + Homework */}
             <div className="lg:col-span-8 space-y-5 sm:space-y-6">
-              <div className="bg-white border border-slate-200/90 rounded-3xl p-4 sm:p-6 shadow-[0_8px_24px_-10px_rgba(15,23,42,0.08)]">
-                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 sm:gap-3 mb-4 sm:mb-5">
-                  <h3 className="text-base sm:text-lg font-extrabold text-slate-900 flex items-center gap-2">
-                    <BookOpen className="w-5 h-5 text-sky-600 shrink-0" />
+              <div className="bg-white border border-slate-200/90 rounded-3xl p-5 sm:p-7 shadow-[0_8px_24px_-10px_rgba(15,23,42,0.08)]">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 sm:gap-3 mb-5">
+                  <h3 className="text-xl sm:text-2xl font-extrabold text-slate-900 flex items-center gap-2.5">
+                    <BookOpen className="w-6 h-6 text-sky-600 shrink-0" />
                     Thẻ nhiệm vụ của Nhóm {data.groupNumber}
                   </h3>
-                  <span className="text-xs font-medium text-slate-500">
+                  <span className="text-sm font-semibold text-slate-500">
                     Chạm vào thẻ để đánh dấu hoàn thành
                   </span>
                 </div>
 
                 {data.cards.length === 0 ? (
-                  <div className="py-10 text-center border-2 border-dashed border-slate-200 rounded-2xl text-sm text-slate-500">
+                  <div className="py-10 text-center border-2 border-dashed border-slate-200 rounded-2xl text-base text-slate-500">
                     Giáo viên chưa phát thẻ nhiệm vụ cho Nhóm {data.groupNumber} vào ngày này.
                   </div>
                 ) : (
@@ -367,7 +367,7 @@ export function StudentPortal({
                             whileHover={{ y: -2 }}
                             whileTap={{ scale: 0.98 }}
                             onClick={() => toggleCardDone(instanceKey, card.title)}
-                            className={`w-full min-h-[44px] text-left rounded-2xl border-2 overflow-hidden transition-colors ${
+                            className={`w-full min-h-[48px] text-left rounded-2xl border-2 overflow-hidden transition-colors ${
                               isDone
                                 ? 'bg-emerald-50/90 border-emerald-400'
                                 : `${mTheme.bg} ${mTheme.border}`
@@ -375,9 +375,9 @@ export function StudentPortal({
                           >
                             {/* Vibrant Top Strip */}
                             <div
-                              className={`px-4 py-2 bg-gradient-to-r ${
+                              className={`px-5 py-2.5 bg-gradient-to-r ${
                                 isDone ? 'from-emerald-500 to-teal-500' : mTheme.headerBar
-                              } text-white flex items-center justify-between gap-2 text-xs font-bold`}
+                              } text-white flex items-center justify-between gap-2 text-sm sm:text-base font-bold`}
                             >
                               <span className="font-mono">
                                 Thẻ #{idx + 1} · {card.code} · Nhiệm vụ {card.missionId}
@@ -387,24 +387,24 @@ export function StudentPortal({
                               </span>
                             </div>
 
-                            <div className="p-4 flex items-start gap-3.5">
+                            <div className="p-5 flex items-start gap-4">
                               <span className="mt-0.5 shrink-0">
                                 {isDone ? (
-                                  <CheckSquare className="w-6 h-6 text-emerald-600" />
+                                  <CheckSquare className="w-7 h-7 text-emerald-600" />
                                 ) : (
-                                  <Square className="w-6 h-6 text-slate-400" />
+                                  <Square className="w-7 h-7 text-slate-400" />
                                 )}
                               </span>
                               <div className="flex-1 min-w-0">
                                 <div
-                                  className={`text-lg sm:text-xl font-extrabold ${
+                                  className={`text-xl sm:text-2xl font-extrabold leading-snug ${
                                     isDone ? 'line-through text-slate-500' : 'text-slate-900'
                                   }`}
                                 >
                                   {card.title}
                                 </div>
                                 {card.description && (
-                                  <p className="text-sm sm:text-base text-slate-700 mt-1.5 leading-relaxed">
+                                  <p className="text-base sm:text-lg text-slate-700 mt-2 leading-relaxed">
                                     {card.description}
                                   </p>
                                 )}
@@ -445,17 +445,17 @@ export function StudentPortal({
                 initial={{ opacity: 0, y: 14 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ duration: 0.35, delay: 0.14 }}
-                className="bg-gradient-to-br from-amber-50 to-orange-50/70 border border-amber-200 rounded-3xl p-4 sm:p-6"
+                className="bg-gradient-to-br from-amber-50 to-orange-50/70 border border-amber-200 rounded-3xl p-5 sm:p-7"
               >
-                <h3 className="text-base sm:text-lg font-extrabold text-slate-900 flex items-center gap-2 mb-2">
+                <h3 className="text-lg sm:text-xl font-extrabold text-slate-900 flex items-center gap-2 mb-2.5">
                   <Sparkles className="w-5 h-5 text-amber-600 shrink-0" />
                   Bài tập về nhà cho Nhóm {data.groupNumber}
                 </h3>
-                <p className="text-sm text-slate-800 leading-relaxed whitespace-pre-line break-words">
+                <p className="text-base sm:text-lg text-slate-800 leading-relaxed whitespace-pre-line break-words">
                   {data.homework}
                 </p>
                 {data.teacherNote && (
-                  <div className="mt-4 pt-4 border-t border-amber-200/80 text-sm text-slate-700 break-words">
+                  <div className="mt-4 pt-4 border-t border-amber-200/80 text-base text-slate-700 break-words">
                     <span className="font-bold text-amber-900">Lời nhắn của thầy/cô: </span>
                     {data.teacherNote}
                   </div>
@@ -470,16 +470,16 @@ export function StudentPortal({
                   initial={{ opacity: 0, scale: 0.94, y: 8 }}
                   animate={{ opacity: 1, scale: 1, y: 0 }}
                   transition={{ type: 'spring', stiffness: 320, damping: 22 }}
-                  className="rounded-3xl p-5 sm:p-6 bg-gradient-to-br from-emerald-500 via-teal-500 to-cyan-600 text-white shadow-[0_14px_30px_-10px_rgba(16,185,129,0.5)]"
+                  className="rounded-3xl p-6 bg-gradient-to-br from-emerald-500 via-teal-500 to-cyan-600 text-white shadow-[0_14px_30px_-10px_rgba(16,185,129,0.5)]"
                 >
-                  <div className="flex items-center gap-2 text-xs sm:text-sm font-extrabold text-amber-200">
+                  <div className="flex items-center gap-2 text-sm sm:text-base font-extrabold text-amber-200">
                     <Trophy className="w-5 h-5 shrink-0" />
                     <span>Thẻ Đặc Quyền của Nhóm {data.groupNumber}</span>
                   </div>
-                  <div className="text-2xl sm:text-3xl font-extrabold font-display mt-1">
+                  <div className="text-3xl sm:text-4xl font-extrabold font-display mt-1">
                     NO HOMEWORK
                   </div>
-                  <p className="text-sm text-white/95 mt-1 font-medium">
+                  <p className="text-sm sm:text-base text-white/95 mt-1.5 font-medium">
                     Chúc mừng! Nhóm bạn đạt top điểm cao và được miễn Bài tập về nhà hôm nay!
                   </p>
                 </motion.div>
@@ -490,16 +490,16 @@ export function StudentPortal({
                   initial={{ opacity: 0, scale: 0.94, y: 8 }}
                   animate={{ opacity: 1, scale: 1, y: 0 }}
                   transition={{ type: 'spring', stiffness: 320, damping: 22 }}
-                  className="rounded-3xl p-5 sm:p-6 bg-gradient-to-br from-rose-500 via-pink-500 to-orange-500 text-white shadow-[0_14px_30px_-10px_rgba(244,63,94,0.48)]"
+                  className="rounded-3xl p-6 bg-gradient-to-br from-rose-500 via-pink-500 to-orange-500 text-white shadow-[0_14px_30px_-10px_rgba(244,63,94,0.48)]"
                 >
-                  <div className="flex items-center gap-2 text-xs sm:text-sm font-extrabold text-amber-200">
+                  <div className="flex items-center gap-2 text-sm sm:text-base font-extrabold text-amber-200">
                     <LifeBuoy className="w-5 h-5 shrink-0" />
                     <span>Thẻ Đặc Quyền của Nhóm {data.groupNumber}</span>
                   </div>
-                  <div className="text-2xl sm:text-3xl font-extrabold font-display mt-1">
+                  <div className="text-3xl sm:text-4xl font-extrabold font-display mt-1">
                     THẺ SOS
                   </div>
-                  <p className="text-sm text-white/95 mt-1 font-medium">
+                  <p className="text-sm sm:text-base text-white/95 mt-1.5 font-medium">
                     Chúc mừng! Nhóm bạn nhận quyền cứu trợ đặc biệt hoặc gợi ý trực tiếp từ Thầy/Cô!
                   </p>
                 </motion.div>
@@ -512,24 +512,24 @@ export function StudentPortal({
                   transition={{ type: 'spring', stiffness: 260, damping: 20, delay: 0.1 }}
                   className="bg-white border border-slate-200/90 rounded-3xl overflow-hidden shadow-[0_8px_24px_-10px_rgba(15,23,42,0.08)]"
                 >
-                  <div className={`px-4 sm:px-6 py-4 bg-gradient-to-r ${teamTheme.gradientHeader} text-white flex items-center justify-between gap-2`}>
-                    <h3 className="text-lg font-extrabold flex items-center gap-2">
+                  <div className={`px-5 sm:px-6 py-4 bg-gradient-to-r ${teamTheme.gradientHeader} text-white flex items-center justify-between gap-2`}>
+                    <h3 className="text-lg sm:text-xl font-extrabold flex items-center gap-2">
                       <Award className="w-5 h-5 shrink-0" />
                       Bảng điểm Nhóm {data.groupNumber}
                     </h3>
-                    <Star className="w-4 h-4 text-amber-200 shrink-0" />
+                    <Star className="w-5 h-5 text-amber-200 shrink-0" />
                   </div>
-                  <div className="p-4 sm:p-6">
-                    <div className="grid grid-cols-2 gap-3 pb-4 border-b border-slate-100 text-xs sm:text-sm">
-                      <div className="p-3 rounded-2xl bg-slate-50">
-                        <div className="text-slate-500 font-semibold">Điểm nhiệm vụ</div>
-                        <div className="text-xl font-extrabold font-mono tabular-nums text-slate-900 mt-0.5">
+                  <div className="p-5 sm:p-6">
+                    <div className="grid grid-cols-2 gap-3 pb-4 border-b border-slate-100 text-sm">
+                      <div className="p-3.5 rounded-2xl bg-slate-50">
+                        <div className="text-slate-600 font-semibold">Điểm nhiệm vụ</div>
+                        <div className="text-2xl font-extrabold font-mono tabular-nums text-slate-900 mt-0.5">
                           {data.publishedGrade.baseScore.toFixed(1)}
                         </div>
                       </div>
-                      <div className="p-3 rounded-2xl bg-slate-50">
-                        <div className="text-slate-500 font-semibold">Cộng / Trừ</div>
-                        <div className="text-xl font-extrabold font-mono tabular-nums mt-0.5">
+                      <div className="p-3.5 rounded-2xl bg-slate-50">
+                        <div className="text-slate-600 font-semibold">Cộng / Trừ</div>
+                        <div className="text-2xl font-extrabold font-mono tabular-nums mt-0.5">
                           <span className="text-emerald-600">+{data.publishedGrade.bonusPoints}</span>
                           {' / '}
                           <span className="text-rose-600">-{data.publishedGrade.penaltyPoints}</span>
@@ -538,22 +538,22 @@ export function StudentPortal({
                     </div>
 
                     {data.publishedGrade.criteria && (
-                      <div className="grid grid-cols-2 gap-2 py-3.5 border-b border-slate-100 text-xs">
-                        <div className="p-2.5 rounded-xl bg-sky-50 text-sky-900 flex items-center justify-between gap-1">
-                          <span className="font-semibold truncate">Tham gia</span>
-                          <span className="font-mono font-extrabold">{data.publishedGrade.criteria.participation}</span>
+                      <div className="grid grid-cols-2 gap-2.5 py-4 border-b border-slate-100 text-sm">
+                        <div className="p-3 rounded-xl bg-sky-50 text-sky-900 flex items-center justify-between gap-1">
+                          <span className="font-bold truncate">Tham gia</span>
+                          <span className="font-mono font-extrabold text-base">{data.publishedGrade.criteria.participation}</span>
                         </div>
-                        <div className="p-2.5 rounded-xl bg-violet-50 text-violet-900 flex items-center justify-between gap-1">
-                          <span className="font-semibold truncate">Hợp tác</span>
-                          <span className="font-mono font-extrabold">{data.publishedGrade.criteria.collaboration}</span>
+                        <div className="p-3 rounded-xl bg-violet-50 text-violet-900 flex items-center justify-between gap-1">
+                          <span className="font-bold truncate">Hợp tác</span>
+                          <span className="font-mono font-extrabold text-base">{data.publishedGrade.criteria.collaboration}</span>
                         </div>
-                        <div className="p-2.5 rounded-xl bg-emerald-50 text-emerald-900 flex items-center justify-between gap-1">
-                          <span className="font-semibold truncate">Chính xác</span>
-                          <span className="font-mono font-extrabold">{data.publishedGrade.criteria.accuracy}</span>
+                        <div className="p-3 rounded-xl bg-emerald-50 text-emerald-900 flex items-center justify-between gap-1">
+                          <span className="font-bold truncate">Chính xác</span>
+                          <span className="font-mono font-extrabold text-base">{data.publishedGrade.criteria.accuracy}</span>
                         </div>
-                        <div className="p-2.5 rounded-xl bg-amber-50 text-amber-900 flex items-center justify-between gap-1">
-                          <span className="font-semibold truncate">Sáng tạo</span>
-                          <span className="font-mono font-extrabold">{data.publishedGrade.criteria.creativity}</span>
+                        <div className="p-3 rounded-xl bg-amber-50 text-amber-900 flex items-center justify-between gap-1">
+                          <span className="font-bold truncate">Sáng tạo</span>
+                          <span className="font-mono font-extrabold text-base">{data.publishedGrade.criteria.creativity}</span>
                         </div>
                       </div>
                     )}

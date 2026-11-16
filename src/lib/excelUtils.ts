@@ -174,52 +174,183 @@ function formatPrivilegeLabel(card?: 'NO_HOMEWORK' | 'SOS' | null): string {
   return '';
 }
 
+interface StudentBonusSummary {
+  sessionCount: number;
+  totalBonus: number;
+  avgBonus: number;
+  avgTotal: number;
+}
+
+function computeStudentAverageStats(
+  students: Student[],
+  records: DailyGradeRecord[]
+): Map<string, StudentBonusSummary> {
+  const statsMap = new Map<string, StudentBonusSummary>();
+
+  for (const stu of students) {
+    let sessionCount = 0;
+    let totalBonus = 0;
+    let totalScore = 0;
+
+    for (const rec of records) {
+      const entry = rec.entries.find((e) => e.groupNumber === stu.groupNumber);
+      if (!entry) continue;
+      sessionCount += 1;
+      const bonus = Number(entry.bonusPoints ?? 0);
+      const base = Number(entry.baseScore ?? 0);
+      const penalty = Number(entry.penaltyPoints ?? 0);
+      totalBonus += bonus;
+      totalScore += clampSessionScore(base, penalty, bonus);
+    }
+
+    statsMap.set(stu.id, {
+      sessionCount,
+      totalBonus: Number(totalBonus.toFixed(2)),
+      avgBonus: sessionCount > 0 ? Number((totalBonus / sessionCount).toFixed(2)) : 0,
+      avgTotal: sessionCount > 0 ? Number((totalScore / sessionCount).toFixed(2)) : 0,
+    });
+  }
+
+  return statsMap;
+}
+
 /**
  * Xuất Bảng tính Điểm buổi học: Danh sách TẤT CẢ học sinh phân theo từng Nhóm (1 -> 8),
- * điểm của từng học sinh hiển thị trực tiếp trên hàng của em đó (tối đa 10 điểm).
+ * kèm cột TBC_DiemCong_HS (trung bình cộng điểm cộng của các HS) và dòng tổng kết trung bình cả lớp.
  */
 export function exportSessionGradebookToExcel(
   classId: string,
   record: DailyGradeRecord,
-  classStudents: Student[]
+  classStudents: Student[],
+  allClassGrades: DailyGradeRecord[] = []
 ): void {
   const cleanCode = classId.replace(/[^a-zA-Z0-9]/g, '');
+  const mergedRecords: DailyGradeRecord[] = [
+    ...allClassGrades.filter((g) => g.classId === classId && g.date !== record.date),
+    record,
+  ];
+  const sortedStudents = [...classStudents].sort(
+    (a, b) =>
+      a.groupNumber - b.groupNumber ||
+      Number(b.isLeader) - Number(a.isLeader) ||
+      a.name.localeCompare(b.name, 'vi')
+  );
+  const avgStatsMap = computeStudentAverageStats(sortedStudents, mergedRecords);
 
-  const studentRows = [...classStudents]
-    .sort(
-      (a, b) =>
-        a.groupNumber - b.groupNumber ||
-        Number(b.isLeader) - Number(a.isLeader) ||
-        a.name.localeCompare(b.name, 'vi')
-    )
-    .map((stu, idx) => {
-      const groupEntry = record.entries.find((e) => e.groupNumber === stu.groupNumber);
-      const base = groupEntry?.baseScore ?? 0;
-      const bonus = groupEntry?.bonusPoints ?? 0;
-      const penalty = groupEntry?.penaltyPoints ?? 0;
-      const total = clampSessionScore(base, penalty, bonus);
-      return {
-        STT: idx + 1,
-        MaHS: stu.studentCode,
-        HoTen: stu.name,
-        NgaySinh: stu.birthDate || '',
-        Lop: stu.classId,
-        To: `Tổ ${stu.to}`,
-        Nhom: `Nhóm ${stu.groupNumber}`,
-        VaiTro: stu.isLeader ? 'Nhóm trưởng' : 'Thành viên',
-        ThamGiaTichCuc: groupEntry?.criteria?.participation ?? '',
-        HopTacPhanCong: groupEntry?.criteria?.collaboration ?? '',
-        KetQuaChinhXac: groupEntry?.criteria?.accuracy ?? '',
-        TrinhBaySangTao: groupEntry?.criteria?.creativity ?? '',
-        DiemCho: base,
-        DiemCong: bonus,
-        DiemTru: penalty,
-        DiemTong_ToiDa10: total,
-        TheDacQuyen: formatPrivilegeLabel(groupEntry?.privilegeCard),
-        NhanXet: groupEntry?.feedback || '',
-        NgayHoc: record.date,
-      };
+  let sumBase = 0;
+  let sumBonus = 0;
+  let sumAvgBonus = 0;
+  let sumPenalty = 0;
+  let sumTotal = 0;
+
+  const studentRows: Array<Record<string, string | number>> = sortedStudents.map((stu, idx) => {
+    const groupEntry = record.entries.find((e) => e.groupNumber === stu.groupNumber);
+    const base = groupEntry?.baseScore ?? 0;
+    const bonus = groupEntry?.bonusPoints ?? 0;
+    const penalty = groupEntry?.penaltyPoints ?? 0;
+    const total = clampSessionScore(base, penalty, bonus);
+    const avgBonus = avgStatsMap.get(stu.id)?.avgBonus ?? bonus;
+
+    sumBase += base;
+    sumBonus += bonus;
+    sumAvgBonus += avgBonus;
+    sumPenalty += penalty;
+    sumTotal += total;
+
+    return {
+      STT: idx + 1,
+      MaHS: stu.studentCode,
+      HoTen: stu.name,
+      NgaySinh: stu.birthDate || '',
+      Lop: stu.classId,
+      To: `Tổ ${stu.to}`,
+      Nhom: `Nhóm ${stu.groupNumber}`,
+      VaiTro: stu.isLeader ? 'Nhóm trưởng' : 'Thành viên',
+      ThamGiaTichCuc: groupEntry?.criteria?.participation ?? '',
+      HopTacPhanCong: groupEntry?.criteria?.collaboration ?? '',
+      KetQuaChinhXac: groupEntry?.criteria?.accuracy ?? '',
+      TrinhBaySangTao: groupEntry?.criteria?.creativity ?? '',
+      DiemCho: base,
+      DiemCong: bonus,
+      TBC_DiemCong_HS: avgBonus,
+      DiemTru: penalty,
+      DiemTong_ToiDa10: total,
+      TheDacQuyen: formatPrivilegeLabel(groupEntry?.privilegeCard),
+      NhanXet: groupEntry?.feedback || '',
+      NgayHoc: record.date,
+    };
+  });
+
+  if (sortedStudents.length > 0) {
+    const n = sortedStudents.length;
+    studentRows.push({
+      STT: '',
+      MaHS: '',
+      HoTen: 'TRUNG BÌNH CỘNG CÁC HS',
+      NgaySinh: '',
+      Lop: classId,
+      To: '',
+      Nhom: '',
+      VaiTro: `${n} HS`,
+      ThamGiaTichCuc: '',
+      HopTacPhanCong: '',
+      KetQuaChinhXac: '',
+      TrinhBaySangTao: '',
+      DiemCho: Number((sumBase / n).toFixed(2)),
+      DiemCong: Number((sumBonus / n).toFixed(2)),
+      TBC_DiemCong_HS: Number((sumAvgBonus / n).toFixed(2)),
+      DiemTru: Number((sumPenalty / n).toFixed(2)),
+      DiemTong_ToiDa10: Number((sumTotal / n).toFixed(2)),
+      TheDacQuyen: '',
+      NhanXet: 'Trung bình cộng toàn lớp',
+      NgayHoc: record.date,
     });
+  }
+
+  const summaryRows: Array<Record<string, string | number>> = sortedStudents.map((stu, idx) => {
+    const stat = avgStatsMap.get(stu.id) || {
+      sessionCount: 1,
+      totalBonus: 0,
+      avgBonus: 0,
+      avgTotal: 0,
+    };
+    return {
+      STT: idx + 1,
+      MaHS: stu.studentCode,
+      HoTen: stu.name,
+      Lop: stu.classId,
+      To: `Tổ ${stu.to}`,
+      Nhom: `Nhóm ${stu.groupNumber}`,
+      SoBuoiDaCham: stat.sessionCount,
+      TongDiemCong: stat.totalBonus,
+      TBC_DiemCong_HS: stat.avgBonus,
+      TBC_DiemTong_HS: stat.avgTotal,
+    };
+  });
+
+  if (sortedStudents.length > 0) {
+    const n = sortedStudents.length;
+    const totalAvgBonusAll = sortedStudents.reduce(
+      (acc, s) => acc + (avgStatsMap.get(s.id)?.avgBonus ?? 0),
+      0
+    );
+    const totalAvgScoreAll = sortedStudents.reduce(
+      (acc, s) => acc + (avgStatsMap.get(s.id)?.avgTotal ?? 0),
+      0
+    );
+    summaryRows.push({
+      STT: '',
+      MaHS: '',
+      HoTen: 'TRUNG BÌNH CỘNG TOÀN LỚP',
+      Lop: classId,
+      To: '',
+      Nhom: '',
+      SoBuoiDaCham: mergedRecords.length,
+      TongDiemCong: '',
+      TBC_DiemCong_HS: Number((totalAvgBonusAll / n).toFixed(2)),
+      TBC_DiemTong_HS: Number((totalAvgScoreAll / n).toFixed(2)),
+    });
+  }
 
   const wb = XLSX.utils.book_new();
   const wsStudents = XLSX.utils.json_to_sheet(studentRows);
@@ -238,13 +369,29 @@ export function exportSessionGradebookToExcel(
     { wch: 15 },
     { wch: 10 },
     { wch: 10 },
+    { wch: 18 },
     { wch: 10 },
     { wch: 16 },
     { wch: 15 },
-    { wch: 24 },
+    { wch: 26 },
     { wch: 12 },
   ];
   XLSX.utils.book_append_sheet(wb, wsStudents, `BangDiem_Lop_${cleanCode}`);
+
+  const wsSummary = XLSX.utils.json_to_sheet(summaryRows);
+  wsSummary['!cols'] = [
+    { wch: 5 },
+    { wch: 10 },
+    { wch: 24 },
+    { wch: 8 },
+    { wch: 8 },
+    { wch: 10 },
+    { wch: 14 },
+    { wch: 14 },
+    { wch: 18 },
+    { wch: 18 },
+  ];
+  XLSX.utils.book_append_sheet(wb, wsSummary, 'TBC_DiemCong_HS');
   XLSX.writeFile(wb, `BangDiem_${cleanCode}_${record.date}.xlsx`);
 }
 
@@ -262,6 +409,7 @@ export function exportAllGradesToExcel(
       Number(b.isLeader) - Number(a.isLeader) ||
       a.name.localeCompare(b.name, 'vi')
   );
+  const avgStatsMap = computeStudentAverageStats(sortedStudents, sortedGrades);
 
   for (const record of sortedGrades) {
     if (sortedStudents.length > 0) {
@@ -270,6 +418,7 @@ export function exportAllGradesToExcel(
         const base = entry?.baseScore ?? 0;
         const bonus = entry?.bonusPoints ?? 0;
         const penalty = entry?.penaltyPoints ?? 0;
+        const avgBonus = avgStatsMap.get(stu.id)?.avgBonus ?? bonus;
         rows.push({
           NgayHoc: record.date,
           Lop: record.classId,
@@ -287,6 +436,7 @@ export function exportAllGradesToExcel(
           TrinhBaySangTao: entry?.criteria?.creativity ?? '',
           DiemCho: base,
           DiemCong: bonus,
+          TBC_DiemCong_HS: avgBonus,
           DiemTru: penalty,
           DiemTong_ToiDa10: clampSessionScore(base, penalty, bonus),
           TheDacQuyen: formatPrivilegeLabel(entry?.privilegeCard),
@@ -303,6 +453,7 @@ export function exportAllGradesToExcel(
           Nhom: `Nhóm ${entry.groupNumber}`,
           DiemCho: entry.baseScore,
           DiemCong: entry.bonusPoints,
+          TBC_DiemCong_HS: entry.bonusPoints,
           DiemTru: entry.penaltyPoints,
           DiemTong_ToiDa10: clampSessionScore(
             entry.baseScore,
@@ -315,9 +466,92 @@ export function exportAllGradesToExcel(
       }
     }
   }
+
   const wb = XLSX.utils.book_new();
   const ws = XLSX.utils.json_to_sheet(rows);
+  ws['!cols'] = [
+    { wch: 12 },
+    { wch: 8 },
+    { wch: 28 },
+    { wch: 5 },
+    { wch: 10 },
+    { wch: 24 },
+    { wch: 12 },
+    { wch: 8 },
+    { wch: 10 },
+    { wch: 14 },
+    { wch: 15 },
+    { wch: 15 },
+    { wch: 15 },
+    { wch: 15 },
+    { wch: 10 },
+    { wch: 10 },
+    { wch: 18 },
+    { wch: 10 },
+    { wch: 16 },
+    { wch: 15 },
+    { wch: 24 },
+  ];
   XLSX.utils.book_append_sheet(wb, ws, `LichSuDiem_${cleanCode}`);
+
+  if (sortedStudents.length > 0) {
+    const summaryRows: Array<Record<string, string | number>> = sortedStudents.map((stu, idx) => {
+      const stat = avgStatsMap.get(stu.id) || {
+        sessionCount: 0,
+        totalBonus: 0,
+        avgBonus: 0,
+        avgTotal: 0,
+      };
+      return {
+        STT: idx + 1,
+        MaHS: stu.studentCode,
+        HoTen: stu.name,
+        Lop: stu.classId,
+        To: `Tổ ${stu.to}`,
+        Nhom: `Nhóm ${stu.groupNumber}`,
+        SoBuoiDaCham: stat.sessionCount,
+        TongDiemCong: stat.totalBonus,
+        TBC_DiemCong_HS: stat.avgBonus,
+        TBC_DiemTong_HS: stat.avgTotal,
+      };
+    });
+    const n = sortedStudents.length;
+    const totalAvgBonusAll = sortedStudents.reduce(
+      (acc, s) => acc + (avgStatsMap.get(s.id)?.avgBonus ?? 0),
+      0
+    );
+    const totalAvgScoreAll = sortedStudents.reduce(
+      (acc, s) => acc + (avgStatsMap.get(s.id)?.avgTotal ?? 0),
+      0
+    );
+    summaryRows.push({
+      STT: '',
+      MaHS: '',
+      HoTen: 'TRUNG BÌNH CỘNG TOÀN LỚP',
+      Lop: classId,
+      To: '',
+      Nhom: '',
+      SoBuoiDaCham: sortedGrades.length,
+      TongDiemCong: '',
+      TBC_DiemCong_HS: Number((totalAvgBonusAll / n).toFixed(2)),
+      TBC_DiemTong_HS: Number((totalAvgScoreAll / n).toFixed(2)),
+    });
+    const wsSummary = XLSX.utils.json_to_sheet(summaryRows);
+    wsSummary['!cols'] = [
+      { wch: 5 },
+      { wch: 10 },
+      { wch: 24 },
+      { wch: 8 },
+      { wch: 8 },
+      { wch: 10 },
+      { wch: 14 },
+      { wch: 14 },
+      { wch: 18 },
+      { wch: 18 },
+    ];
+    XLSX.utils.book_append_sheet(wb, wsSummary, 'TBC_DiemCong_HS');
+  }
+
   XLSX.writeFile(wb, `LichSu_BangDiem_${cleanCode}.xlsx`);
 }
 

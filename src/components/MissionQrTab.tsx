@@ -467,16 +467,16 @@ export function MissionQrTab({
               >
                 <div>
                   {/* Vibrant Team Color Top Header */}
-                  <div className={`px-4 py-3.5 bg-gradient-to-r ${teamTheme.gradientHeader} text-white flex items-start justify-between gap-2`}>
+                  <div className={`px-5 py-4 bg-gradient-to-r ${teamTheme.gradientHeader} text-white flex items-start justify-between gap-2.5`}>
                     <div>
-                      <div className="text-[11px] font-semibold text-white/90 flex items-center gap-1.5">
+                      <div className="text-xs sm:text-sm font-bold text-white/95 flex items-center gap-1.5">
                         <span>{teamTheme.teamLabel}</span>
                         <span aria-hidden="true">·</span>
                         <span className="font-mono tabular-nums">{groupStudents.length} HS</span>
                         <span aria-hidden="true">·</span>
                         <span className="font-mono tabular-nums">{plan.cardIds.length} thẻ</span>
                       </div>
-                      <h3 className="text-lg font-extrabold mt-0.5">Nhóm {groupNum}</h3>
+                      <h3 className="text-xl sm:text-2xl font-extrabold mt-0.5">Nhóm {groupNum}</h3>
                     </div>
 
                     <motion.button
@@ -484,23 +484,23 @@ export function MissionQrTab({
                       whileTap={{ scale: 0.95 }}
                       type="button"
                       onClick={() => onPreviewStudentQr(classId, groupNum, selectedDate)}
-                      className="inline-flex items-center gap-1 px-2.5 py-1.5 text-xs font-bold text-slate-900 bg-white/95 hover:bg-white rounded-xl transition-colors whitespace-nowrap shadow-xs"
+                      className="inline-flex items-center gap-1.5 px-3 py-2 text-xs sm:text-sm font-bold text-slate-900 bg-white/95 hover:bg-white rounded-xl transition-colors whitespace-nowrap shadow-xs"
                     >
-                      <QrCode className="w-3.5 h-3.5" />
+                      <QrCode className="w-4 h-4" />
                       Trang HS
                     </motion.button>
                   </div>
 
-                  <div className="p-4">
+                  <div className="p-5">
                     {/* Live QR Code directly on each group card right after dealing */}
                     <motion.div
                       whileHover={{ scale: 1.02 }}
                       transition={{ type: 'spring', stiffness: 320, damping: 24 }}
-                      className={`mb-3 py-3 px-2 ${teamTheme.softBg} border ${teamTheme.border} rounded-2xl flex flex-col items-center`}
+                      className={`mb-4 py-3.5 px-3 ${teamTheme.softBg} border ${teamTheme.border} rounded-2xl flex flex-col items-center`}
                     >
-                      <QrCodeBox value={qrUrl} size={116} label={`QR Lớp ${classId} Nhóm ${groupNum}`} />
-                      <div className="mt-2 flex items-center gap-3 text-[11px]">
-                        <span className="text-slate-600 font-medium">Quét riêng Nhóm {groupNum}</span>
+                      <QrCodeBox value={qrUrl} size={132} label={`QR Lớp ${classId} Nhóm ${groupNum}`} />
+                      <div className="mt-2.5 flex items-center gap-3 text-xs sm:text-sm">
+                        <span className="text-slate-700 font-semibold">Quét riêng Nhóm {groupNum}</span>
                         <button
                           type="button"
                           onClick={() => {
@@ -516,15 +516,15 @@ export function MissionQrTab({
                     </motion.div>
 
                     {/* Leader & Members Quick List */}
-                    <div className="text-xs text-slate-600 mb-3">
+                    <div className="text-sm text-slate-700 mb-3.5 space-y-1">
                       {leader && (
-                        <div className="font-bold text-amber-700 flex items-center gap-1 mb-0.5">
-                          <Crown className="w-3.5 h-3.5 text-amber-500 shrink-0" />
-                          Nhóm trưởng: {leader.name}
+                        <div className="font-bold text-amber-700 flex items-center gap-1.5">
+                          <Crown className="w-4 h-4 text-amber-500 shrink-0" />
+                          <span>Nhóm trưởng: {leader.name}</span>
                         </div>
                       )}
-                      <div className="truncate" title={groupStudents.map((s) => s.name).join(', ')}>
-                        <span className="font-semibold text-slate-700">TV: </span>
+                      <div className="line-clamp-2 leading-snug" title={groupStudents.map((s) => s.name).join(', ')}>
+                        <span className="font-bold text-slate-800">TV: </span>
                         {groupStudents.length === 0
                           ? 'Chưa có học sinh'
                           : groupStudents.map((s) => s.name).join(', ')}
@@ -533,15 +533,15 @@ export function MissionQrTab({
 
                     {/* Assigned Cards */}
                     <div>
-                      <div className="text-xs font-bold text-slate-700 mb-1.5">
+                      <div className="text-sm font-extrabold text-slate-800 mb-2">
                         Thẻ nhiệm vụ ({plan.cardIds.length})
                       </div>
                       {plan.cardIds.length === 0 ? (
-                        <div className="p-2.5 text-xs text-slate-400 border border-dashed border-slate-200 rounded-xl text-center">
+                        <div className="p-3 text-sm text-slate-400 border border-dashed border-slate-200 rounded-xl text-center">
                           Chưa phát thẻ
                         </div>
                       ) : (
-                        <div className="space-y-1.5">
+                        <div className="space-y-2">
                           {plan.cardIds.map((cid, cIdx) => {
                             const card = allCards.find((c) => c.id === cid);
                             const mTheme = card ? MISSION_THEMES[card.missionId] || MISSION_THEMES[1] : MISSION_THEMES[1];
@@ -551,13 +551,13 @@ export function MissionQrTab({
                                 initial={{ opacity: 0, x: -6 }}
                                 animate={{ opacity: 1, x: 0 }}
                                 transition={{ delay: 0.04 * cIdx }}
-                                className={`flex items-center justify-between gap-1.5 px-2.5 py-2 border rounded-xl text-xs ${mTheme.bg} ${mTheme.border}`}
+                                className={`flex items-center justify-between gap-2 px-3 py-2.5 border rounded-xl ${mTheme.bg} ${mTheme.border}`}
                               >
                                 <div className="min-w-0">
-                                  <div className={`font-mono font-bold ${mTheme.text}`}>
+                                  <div className={`text-xs sm:text-sm font-mono font-extrabold ${mTheme.text}`}>
                                     {card ? `NV${card.missionId} · ${card.code}` : cid}
                                   </div>
-                                  <div className="text-slate-800 font-semibold truncate">
+                                  <div className="text-sm sm:text-base text-slate-900 font-bold leading-snug line-clamp-2 mt-0.5">
                                     {card ? card.title : 'Thẻ không tồn tại'}
                                   </div>
                                 </div>
@@ -565,9 +565,9 @@ export function MissionQrTab({
                                   type="button"
                                   onClick={() => handleRemoveCardFromGroup(groupNum, cIdx)}
                                   title="Gỡ thẻ này"
-                                  className="text-slate-400 hover:text-rose-600 p-1 shrink-0"
+                                  className="text-slate-400 hover:text-rose-600 p-1.5 shrink-0"
                                 >
-                                  <Trash2 className="w-3.5 h-3.5" />
+                                  <Trash2 className="w-4 h-4" />
                                 </button>
                               </motion.div>
                             );
@@ -575,11 +575,11 @@ export function MissionQrTab({
                         </div>
                       )}
 
-                      <div className="mt-2">
+                      <div className="mt-2.5">
                         <select
                           value=""
                           onChange={(e) => handleAddCardToGroup(groupNum, e.target.value)}
-                          className="w-full px-2.5 py-1.5 text-xs bg-white border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-600 text-slate-700"
+                          className="w-full px-3 py-2 text-sm bg-white border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-600 text-slate-700"
                         >
                           <option value="">+ Thêm thẻ thủ công...</option>
                           {coreMissions.map((m) => (
@@ -598,9 +598,9 @@ export function MissionQrTab({
                 </div>
 
                 {/* Homework & Note */}
-                <div className="px-4 pb-4 pt-3 border-t border-slate-100 space-y-2">
+                <div className="px-5 pb-5 pt-3.5 border-t border-slate-100 space-y-2.5">
                   <div>
-                    <label className="block text-[11px] font-semibold text-slate-600 mb-1">
+                    <label className="block text-xs sm:text-sm font-bold text-slate-700 mb-1">
                       Bài tập về nhà Nhóm {groupNum}
                     </label>
                     <textarea
@@ -608,7 +608,7 @@ export function MissionQrTab({
                       value={plan.homework}
                       onChange={(e) => handleUpdateGroupField(groupNum, 'homework', e.target.value)}
                       placeholder="Nhập BTVN cho nhóm..."
-                      className="w-full px-2.5 py-1.5 text-xs border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-600"
+                      className="w-full px-3 py-2 text-sm border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-600"
                     />
                   </div>
                   <input
@@ -616,7 +616,7 @@ export function MissionQrTab({
                     value={plan.teacherNote || ''}
                     onChange={(e) => handleUpdateGroupField(groupNum, 'teacherNote', e.target.value)}
                     placeholder="Ghi chú thêm khi quét QR..."
-                    className="w-full px-2.5 py-1.5 text-xs border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-600"
+                    className="w-full px-3 py-2 text-sm border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-600"
                   />
                 </div>
               </motion.div>
@@ -929,27 +929,27 @@ export function MissionQrTab({
                   )}
                 </div>
 
-                <div className="mt-3 space-y-2">
+                <div className="mt-3.5 space-y-2.5">
                   {mission.cards.map((card) => (
                     <div
                       key={card.id}
-                      className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-3 bg-slate-50 border border-slate-200 rounded-xl"
+                      className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-4 bg-slate-50 border border-slate-200 rounded-2xl"
                     >
                       <div className="min-w-0">
-                        <div className="flex items-center gap-2 text-xs text-slate-500">
-                          <span className="font-mono font-semibold text-blue-700">{card.code}</span>
+                        <div className="flex items-center gap-2 text-xs sm:text-sm text-slate-500">
+                          <span className="font-mono font-bold text-blue-700">{card.code}</span>
                           <span aria-hidden="true">·</span>
                           <span className="font-mono tabular-nums">{card.durationMinutes} phút</span>
                           {card.isDuplicate && (
                             <>
                               <span aria-hidden="true">·</span>
-                              <span className="text-amber-700 font-medium">Thẻ trùng</span>
+                              <span className="text-amber-700 font-semibold">Thẻ trùng</span>
                             </>
                           )}
                         </div>
-                        <div className="text-sm font-semibold text-slate-900 mt-0.5">{card.title}</div>
+                        <div className="text-base sm:text-lg font-extrabold text-slate-900 mt-1">{card.title}</div>
                         {card.description && (
-                          <div className="text-xs text-slate-600 mt-0.5">{card.description}</div>
+                          <div className="text-sm text-slate-600 mt-1 leading-relaxed">{card.description}</div>
                         )}
                       </div>
 
@@ -957,18 +957,18 @@ export function MissionQrTab({
                         <button
                           type="button"
                           onClick={() => handleDuplicateCard(card)}
-                          className="inline-flex items-center gap-1 px-2.5 py-1.5 text-xs font-medium text-slate-700 bg-white border border-slate-200 hover:bg-slate-100 rounded-lg whitespace-nowrap"
+                          className="inline-flex items-center gap-1.5 px-3 py-2 text-xs sm:text-sm font-semibold text-slate-700 bg-white border border-slate-200 hover:bg-slate-100 rounded-xl whitespace-nowrap"
                         >
-                          <Copy className="w-3.5 h-3.5" />
+                          <Copy className="w-4 h-4" />
                           Nhân bản thẻ
                         </button>
                         <button
                           type="button"
                           onClick={() => handleDeleteCard(card.id)}
                           title="Xóa thẻ"
-                          className="p-1.5 text-slate-400 hover:text-red-600 bg-white border border-slate-200 rounded-lg"
+                          className="p-2 text-slate-400 hover:text-red-600 bg-white border border-slate-200 rounded-xl"
                         >
-                          <Trash2 className="w-3.5 h-3.5" />
+                          <Trash2 className="w-4 h-4" />
                         </button>
                       </div>
                     </div>
@@ -1003,32 +1003,32 @@ export function MissionQrTab({
                 <div>
                   <div className="flex items-center justify-between border-b border-slate-100 pb-3 mb-4">
                     <div>
-                      <div className="text-xs text-slate-500">
+                      <div className="text-xs sm:text-sm text-slate-500 font-semibold">
                         Lớp {classId} · <span className="font-mono tabular-nums">{selectedDate}</span>
                       </div>
-                      <h3 className="text-xl font-extrabold text-slate-900">THẺ NHÓM {groupNum}</h3>
+                      <h3 className="text-xl sm:text-2xl font-extrabold text-slate-900">THẺ NHÓM {groupNum}</h3>
                     </div>
                     <div className="text-right">
-                      <div className="text-xs text-slate-500">Số thẻ</div>
-                      <div className="text-lg font-bold font-mono tabular-nums text-blue-700">
+                      <div className="text-xs sm:text-sm text-slate-500 font-semibold">Số thẻ</div>
+                      <div className="text-xl font-extrabold font-mono tabular-nums text-blue-700">
                         {plan.cardIds.length}
                       </div>
                     </div>
                   </div>
 
                   <div className="flex items-center justify-center py-2">
-                    <QrCodeBox value={qrUrl} size={156} label={`QR Lớp ${classId} Nhóm ${groupNum}`} />
+                    <QrCodeBox value={qrUrl} size={168} label={`QR Lớp ${classId} Nhóm ${groupNum}`} />
                   </div>
 
-                  <p className="text-xs text-center text-slate-500 mt-2">
+                  <p className="text-sm text-center text-slate-600 font-medium mt-2.5">
                     Quét mã QR để xem nhiệm vụ nhóm hôm nay
                   </p>
 
-                  <div className="mt-4 pt-3 border-t border-slate-100 text-xs text-slate-600">
-                    <div className="font-semibold text-slate-800 mb-1">
+                  <div className="mt-4 pt-3.5 border-t border-slate-100 text-sm text-slate-700">
+                    <div className="font-bold text-slate-900 mb-1">
                       Thành viên ({groupStudents.length} HS):
                     </div>
-                    <div>
+                    <div className="leading-relaxed">
                       {groupStudents.length > 0
                         ? groupStudents.map((s) => (s.isLeader ? `${s.name} (NT)` : s.name)).join(', ')
                         : 'Chưa gán học sinh'}
@@ -1040,16 +1040,16 @@ export function MissionQrTab({
                   <button
                     type="button"
                     onClick={() => navigator.clipboard?.writeText(qrUrl)}
-                    className="text-xs font-medium text-slate-600 hover:text-slate-900 hover:underline"
+                    className="text-sm font-semibold text-slate-600 hover:text-slate-900 hover:underline"
                   >
                     Sao chép link
                   </button>
                   <button
                     type="button"
                     onClick={() => onPreviewStudentQr(classId, groupNum, selectedDate)}
-                    className="inline-flex items-center gap-1 text-xs font-semibold text-blue-700 hover:text-blue-800"
+                    className="inline-flex items-center gap-1 text-sm font-bold text-blue-700 hover:text-blue-800"
                   >
-                    Mở trang HS <ExternalLink className="w-3.5 h-3.5" />
+                    Mở trang HS <ExternalLink className="w-4 h-4" />
                   </button>
                 </div>
               </div>

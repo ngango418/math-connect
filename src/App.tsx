@@ -288,24 +288,24 @@ export default function App() {
 
         {/* Top Bar Contract: Single-row, 3 zones */}
         <header className="bg-white/92 backdrop-blur-md border-b border-sky-200/80 sticky top-0 z-40 no-print shadow-[0_2px_14px_-4px_rgba(14,165,233,0.12)]">
-          <div className="max-w-7xl mx-auto px-3.5 sm:px-6 h-16 flex items-center justify-between gap-3 sm:gap-6">
+          <div className="max-w-[1640px] mx-auto px-4 sm:px-6 lg:px-10 h-16 sm:h-[70px] flex items-center justify-between gap-3 sm:gap-6">
             {/* Zone 1: Single-line Brand Wordmark */}
             <button
               type="button"
               onClick={() => {
                 if (mode === 'teacher' && teacher) setActiveTab('missions');
               }}
-              className="inline-flex items-center gap-2.5 text-lg sm:text-xl font-extrabold tracking-tight text-slate-900 whitespace-nowrap shrink-0 text-left font-display"
+              className="inline-flex items-center gap-2.5 text-xl sm:text-2xl font-extrabold tracking-tight text-slate-900 whitespace-nowrap shrink-0 text-left font-display"
             >
-              <span className="w-9 h-9 rounded-xl bg-gradient-to-br from-sky-500 via-blue-600 to-violet-600 text-white inline-flex items-center justify-center shadow-sm shrink-0">
-                <Sparkles className="w-4 h-4" />
+              <span className="w-10 h-10 rounded-xl bg-gradient-to-br from-sky-500 via-blue-600 to-violet-600 text-white inline-flex items-center justify-center shadow-sm shrink-0">
+                <Sparkles className="w-5 h-5" />
               </span>
               <span>ClassQR Studio</span>
             </button>
 
             {/* Zone 2: Concise single-line nav links (Locked in student mode — no class/group switching) */}
             {mode === 'teacher' && teacher ? (
-              <nav className="hidden lg:flex items-center gap-6 text-[15px] font-bold text-slate-600 overflow-x-auto">
+              <nav className="hidden lg:flex items-center gap-7 text-[15px] xl:text-base font-bold text-slate-600 overflow-x-auto">
                 {teacherNavLinks.map((link) => {
                   const isActive = activeTab === link.id;
                   return (
@@ -392,7 +392,7 @@ export default function App() {
               onNotifyClass={(alert) => triggerClassAlert(alert, false)}
             />
           ) : !authChecked ? (
-            <div className="max-w-7xl mx-auto px-4 sm:px-6 py-16 text-center text-sm text-slate-500">
+            <div className="max-w-[1640px] mx-auto px-4 sm:px-6 lg:px-10 py-16 text-center text-base text-slate-500">
               Đang kiểm tra phiên đăng nhập...
             </div>
           ) : !teacher ? (
@@ -401,9 +401,9 @@ export default function App() {
               onSwitchToStudent={() => switchToStudentMode(selectedClass, 1, selectedDate, false)}
             />
           ) : (
-            <div className="max-w-7xl mx-auto px-3.5 sm:px-6 py-4 sm:py-6 space-y-5 sm:space-y-6">
+            <div className="max-w-[1640px] mx-auto px-4 sm:px-6 lg:px-10 py-5 sm:py-7 space-y-6">
               {/* Dynamic Class Switcher + Add/Remove Class + Teacher Profile */}
-              <div className="bg-white/95 backdrop-blur-sm border border-slate-200/90 rounded-3xl p-4 sm:px-5 flex flex-col lg:flex-row lg:items-center justify-between gap-4 shadow-[0_6px_22px_-8px_rgba(15,23,42,0.08)] no-print">
+              <div className="bg-white/95 backdrop-blur-sm border border-slate-200/90 rounded-3xl p-4 sm:px-6 flex flex-col lg:flex-row lg:items-center justify-between gap-4 shadow-[0_6px_22px_-8px_rgba(15,23,42,0.08)] no-print">
                 <div className="flex flex-wrap items-center gap-3">
                   <div className="flex flex-wrap items-center gap-1 p-1 bg-slate-100 rounded-2xl">
                     {availableClasses.map((cls) => {
@@ -623,74 +623,74 @@ export default function App() {
 
       {/* Instructional Footer for Students */}
       <footer className="relative z-10 border-t border-slate-200/80 bg-white/90 backdrop-blur-sm no-print mt-8">
-        <div className="max-w-7xl mx-auto px-3.5 sm:px-6 py-6 sm:py-8 space-y-4">
+        <div className="max-w-[1640px] mx-auto px-4 sm:px-6 lg:px-10 py-6 sm:py-8 space-y-4">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
             <div>
-              <h2 className="text-sm sm:text-base font-extrabold text-slate-900">
+              <h2 className="text-base sm:text-lg font-extrabold text-slate-900">
                 Hướng dẫn Học sinh tham gia hoạt động Nhiệm vụ QR
               </h2>
-              <p className="text-xs text-slate-500 mt-0.5">
+              <p className="text-sm text-slate-600 mt-0.5">
                 Thực hiện lần lượt 4 bước bên dưới cùng nhóm của mình trong mỗi tiết học.
               </p>
             </div>
-            <span className="text-xs font-semibold text-sky-700 whitespace-nowrap">
+            <span className="text-sm font-bold text-sky-700 whitespace-nowrap">
               Thang điểm nhóm: tối đa 10 điểm
             </span>
           </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
-            <div className="p-3.5 rounded-2xl bg-sky-50/80 border border-sky-200/80 flex items-start gap-3">
-              <span className="w-8 h-8 rounded-xl bg-sky-600 text-white flex items-center justify-center shrink-0">
-                <QrCode className="w-4 h-4" />
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+            <div className="p-4 rounded-2xl bg-sky-50/85 border border-sky-200/80 flex items-start gap-3.5">
+              <span className="w-9 h-9 rounded-xl bg-sky-600 text-white flex items-center justify-center shrink-0">
+                <QrCode className="w-4.5 h-4.5" />
               </span>
               <div className="min-w-0">
-                <div className="text-xs font-extrabold text-sky-900">Bước 1 · Quét mã QR nhóm</div>
-                <p className="text-xs text-slate-600 mt-0.5 leading-relaxed">
+                <div className="text-sm sm:text-base font-extrabold text-sky-900">Bước 1 · Quét mã QR nhóm</div>
+                <p className="text-sm text-slate-700 mt-1 leading-relaxed">
                   Mở Camera hoặc Zalo quét đúng mã QR của nhóm mình để mở bảng nhiệm vụ riêng tư.
                 </p>
               </div>
             </div>
 
-            <div className="p-3.5 rounded-2xl bg-violet-50/80 border border-violet-200/80 flex items-start gap-3">
-              <span className="w-8 h-8 rounded-xl bg-violet-600 text-white flex items-center justify-center shrink-0">
-                <Users className="w-4 h-4" />
+            <div className="p-4 rounded-2xl bg-violet-50/85 border border-violet-200/80 flex items-start gap-3.5">
+              <span className="w-9 h-9 rounded-xl bg-violet-600 text-white flex items-center justify-center shrink-0">
+                <Users className="w-4.5 h-4.5" />
               </span>
               <div className="min-w-0">
-                <div className="text-xs font-extrabold text-violet-900">Bước 2 · Thảo luận cùng đội</div>
-                <p className="text-xs text-slate-600 mt-0.5 leading-relaxed">
+                <div className="text-sm sm:text-base font-extrabold text-violet-900">Bước 2 · Thảo luận cùng đội</div>
+                <p className="text-sm text-slate-700 mt-1 leading-relaxed">
                   Nhóm trưởng phân công thành viên thực hiện theo hướng dẫn trên từng thẻ màu.
                 </p>
               </div>
             </div>
 
-            <div className="p-3.5 rounded-2xl bg-emerald-50/80 border border-emerald-200/80 flex items-start gap-3">
-              <span className="w-8 h-8 rounded-xl bg-emerald-600 text-white flex items-center justify-center shrink-0">
-                <CheckSquare className="w-4 h-4" />
+            <div className="p-4 rounded-2xl bg-emerald-50/85 border border-emerald-200/80 flex items-start gap-3.5">
+              <span className="w-9 h-9 rounded-xl bg-emerald-600 text-white flex items-center justify-center shrink-0">
+                <CheckSquare className="w-4.5 h-4.5" />
               </span>
               <div className="min-w-0">
-                <div className="text-xs font-extrabold text-emerald-900">Bước 3 · Tick báo hoàn thành</div>
-                <p className="text-xs text-slate-600 mt-0.5 leading-relaxed">
+                <div className="text-sm sm:text-base font-extrabold text-emerald-900">Bước 3 · Tick báo hoàn thành</div>
+                <p className="text-sm text-slate-700 mt-1 leading-relaxed">
                   Chạm vào ô thẻ khi làm xong để phát chuông và hiện thông báo cho cả lớp cùng biết.
                 </p>
               </div>
             </div>
 
-            <div className="p-3.5 rounded-2xl bg-amber-50/80 border border-amber-200/80 flex items-start gap-3">
-              <span className="w-8 h-8 rounded-xl bg-amber-500 text-white flex items-center justify-center shrink-0">
-                <Award className="w-4 h-4" />
+            <div className="p-4 rounded-2xl bg-amber-50/85 border border-amber-200/80 flex items-start gap-3.5">
+              <span className="w-9 h-9 rounded-xl bg-amber-500 text-white flex items-center justify-center shrink-0">
+                <Award className="w-4.5 h-4.5" />
               </span>
               <div className="min-w-0">
-                <div className="text-xs font-extrabold text-amber-900">Bước 4 · Xem điểm &amp; BTVN</div>
-                <p className="text-xs text-slate-600 mt-0.5 leading-relaxed">
+                <div className="text-sm sm:text-base font-extrabold text-amber-900">Bước 4 · Xem điểm &amp; BTVN</div>
+                <p className="text-sm text-slate-700 mt-1 leading-relaxed">
                   Theo dõi điểm cộng/trừ của nhóm (tối đa 10đ) và ghi lại Bài tập về nhà cuối tiết.
                 </p>
               </div>
             </div>
           </div>
 
-          <div className="pt-2 border-t border-slate-100 flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-[11px] text-slate-500">
+          <div className="pt-2 border-t border-slate-100 flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs sm:text-sm text-slate-500">
             <span className="inline-flex items-center gap-1.5">
-              <BellRing className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+              <BellRing className="w-4 h-4 text-emerald-600 shrink-0" />
               Mỗi thành viên trong nhóm sẽ nhận cùng số điểm tổng kết của nhóm sau buổi học.
             </span>
             <span className="font-semibold text-slate-400">ClassQR Studio</span>
