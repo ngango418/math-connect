@@ -21,10 +21,11 @@ import { MissionQrTab } from './components/MissionQrTab.tsx';
 import { DailyGradingTab } from './components/DailyGradingTab.tsx';
 import { StudentRosterTab } from './components/StudentRosterTab.tsx';
 import { SquadSplitTab } from './components/SquadSplitTab.tsx';
-import { FirebaseGuideTab } from './components/FirebaseGuideTab.tsx';
+import { DatabaseGuideTab } from './components/DatabaseGuideTab.tsx';
+import { computeQrAccessToken, verifyQrAccessToken } from '../shared/qrToken.ts';
 
 type AppMode = 'student' | 'teacher';
-type TeacherTab = 'missions' | 'grading' | 'students' | 'squads' | 'firebase';
+type TeacherTab = 'missions' | 'grading' | 'students' | 'squads' | 'database';
 
 function getTodayDateString(): string {
   const now = new Date();
@@ -39,9 +40,10 @@ function parseInitialParams(): {
   classId: ClassId;
   group: GroupNumber;
   date: string;
+  qrToken: string;
 } {
   if (typeof window === 'undefined') {
-    return { mode: 'teacher', classId: '9/1', group: 1, date: getTodayDateString() };
+    return { mode: 'teacher', classId: '9/1', group: 1, date: getTodayDateString(), qrToken: '' };
   }
   const params = new URLSearchParams(window.location.search);
   const view = params.get('view');
@@ -52,12 +54,14 @@ function parseInitialParams(): {
     rawGroup >= 1 && rawGroup <= 8 ? (rawGroup as GroupNumber) : 1;
   const rawDate = params.get('date') || '';
   const date = /^\d{4}-\d{2}-\d{2}$/.test(rawDate) ? rawDate : getTodayDateString();
+  const qrToken = (params.get('k') || '').trim();
 
   return {
     mode: view === 'student' ? 'student' : 'teacher',
     classId,
     group,
     date,
+    qrToken,
   };
 }
 
@@ -72,6 +76,7 @@ export default function App() {
   const [selectedClass, setSelectedClass] = useState<ClassId>(initial.classId);
   const [selectedDate, setSelectedDate] = useState<string>(initial.date);
   const [studentPreviewGroup, setStudentPreviewGroup] = useState<GroupNumber>(initial.group);
+  const [qrToken, setQrToken] = useState<string>(initial.qrToken);
 
   const [workspace, setWorkspace] = useState<WorkspaceSnapshot | null>(null);
   const [workspaceLoading, setWorkspaceLoading] = useState(false);
@@ -111,16 +116,24 @@ export default function App() {
       .finally(() => setAuthChecked(true));
   }, [loadWorkspace]);
 
-  const syncStudentUrlParams = useCallback((cls: ClassId, grp: GroupNumber, dt: string) => {
-    if (typeof window === 'undefined') return;
-    const params = new URLSearchParams({
-      view: 'student',
-      class: cls,
-      group: String(grp),
-      date: dt,
-    });
-    window.history.replaceState({}, '', `${window.location.pathname}?${params.toString()}`);
-  }, []);
+  const syncStudentUrlParams = useCallback(
+    (cls: ClassId, grp: GroupNumber, dt: string, token: string) => {
+      if (typeof window === 'undefined') return;
+      const params = token
+        ? new URLSearchParams({
+            view: 'student',
+            class: cls,
+            group: String(grp),
+            date: dt,
+            k: token,
+          })
+        : new URLSearchParams({
+            view: 'student',
+          });
+      window.history.replaceState({}, '', `${window.location.pathname}?${params.toString()}`);
+    },
+    []
+  );
 
   const switchToTeacherMode = () => {
     setMode('teacher');
@@ -132,13 +145,17 @@ export default function App() {
   const switchToStudentMode = (
     cls: ClassId = selectedClass,
     grp: GroupNumber = 1,
-    dt: string = selectedDate
+    dt: string = selectedDate,
+    allowTeacherPreviewToken = false
   ) => {
+    const token =
+      allowTeacherPreviewToken && teacher ? computeQrAccessToken(cls, grp, dt) : '';
     setSelectedClass(cls);
     setStudentPreviewGroup(grp);
     setSelectedDate(dt);
+    setQrToken(token);
     setMode('student');
-    syncStudentUrlParams(cls, grp, dt);
+    syncStudentUrlParams(cls, grp, dt, token);
   };
 
   const handleTeacherLoginSuccess = async (user: TeacherUser) => {
@@ -187,7 +204,7 @@ export default function App() {
     { id: 'grading', label: 'Chấm điểm & Bảng tính' },
     { id: 'students', label: 'Học sinh & AI Excel' },
     { id: 'squads', label: 'Chia 4 Tổ → 8 Nhóm' },
-    { id: 'firebase', label: 'Liên kết Database' },
+    { id: 'database', label: 'Liên kết Database' },
   ];
 
   const availableClasses = workspace?.classes?.length
@@ -206,14 +223,16 @@ export default function App() {
           {/* Zone 1: Single-line Brand Wordmark */}
           <button
             type="button"
-            onClick={() => (mode === 'teacher' && teacher ? setActiveTab('missions') : switchToStudentMode())}
+            onClick={() => {
+              if (mode === 'teacher' && teacher) setActiveTab('missions');
+            }}
             className="inline-flex items-center gap-2 text-lg font-extrabold tracking-tight text-slate-900 whitespace-nowrap shrink-0 text-left"
           >
             <Sparkles className="w-5 h-5 text-blue-600 shrink-0" />
             <span>ClassQR Studio</span>
           </button>
 
-          {/* Zone 2: Concise single-line nav links */}
+          {/* Zone 2: Concise single-line nav links (Locked in student mode — no class/group links) */}
           {mode === 'teacher' && teacher ? (
             <nav className="hidden lg:flex items-center gap-6 text-sm font-medium text-slate-600 overflow-x-auto">
               {teacherNavLinks.map((link) => (
@@ -232,29 +251,17 @@ export default function App() {
               ))}
             </nav>
           ) : (
-            <nav className="hidden md:flex items-center gap-6 text-sm font-medium text-slate-600 overflow-x-auto">
-              {availableClasses.slice(0, 4).map((cls) => (
-                <button
-                  key={cls.id}
-                  type="button"
-                  onClick={() => switchToStudentMode(cls.id, studentPreviewGroup, selectedDate)}
-                  className={`py-1 whitespace-nowrap shrink-0 transition-colors border-b-2 ${
-                    mode === 'student' && selectedClass === cls.id
-                      ? 'text-blue-600 border-blue-600 font-semibold'
-                      : 'border-transparent hover:text-slate-900'
-                  }`}
-                >
-                  Lớp {cls.name}
-                </button>
-              ))}
-              <button
-                type="button"
-                onClick={() => switchToStudentMode(selectedClass, studentPreviewGroup, selectedDate)}
-                className="py-1 whitespace-nowrap shrink-0 transition-colors text-slate-700 hover:text-slate-900"
-              >
-                Quét thẻ QR
-              </button>
-            </nav>
+            <div className="hidden md:flex items-center gap-2 text-xs font-semibold text-slate-600">
+              {verifyQrAccessToken(selectedClass, studentPreviewGroup, selectedDate, qrToken) ? (
+                <span className="px-3 py-1 rounded-lg bg-slate-100 text-slate-700 whitespace-nowrap">
+                  Chế độ Học sinh · Lớp {selectedClass} · Nhóm {studentPreviewGroup}
+                </span>
+              ) : (
+                <span className="text-slate-500 whitespace-nowrap">
+                  Cổng Học Sinh (Chỉ truy cập bằng mã QR của nhóm)
+                </span>
+              )}
+            </div>
           )}
 
           {/* Zone 3: 1 Primary CTA */}
@@ -262,7 +269,7 @@ export default function App() {
             {mode === 'teacher' ? (
               <button
                 type="button"
-                onClick={() => switchToStudentMode(selectedClass, 1, selectedDate)}
+                onClick={() => switchToStudentMode(selectedClass, 1, selectedDate, Boolean(teacher))}
                 className="inline-flex items-center gap-1.5 px-4 py-2 text-xs font-semibold text-white bg-slate-900 hover:bg-slate-800 rounded-xl transition-colors whitespace-nowrap shrink-0"
               >
                 <QrCode className="w-3.5 h-3.5" />
@@ -285,10 +292,10 @@ export default function App() {
       <main className="flex-1">
         {mode === 'student' ? (
           <StudentPortal
-            initialClassId={selectedClass}
-            initialGroup={studentPreviewGroup}
-            initialDate={selectedDate}
-            onSyncUrlParams={syncStudentUrlParams}
+            classId={selectedClass}
+            groupNumber={studentPreviewGroup}
+            date={selectedDate}
+            qrToken={qrToken}
           />
         ) : !authChecked ? (
           <div className="max-w-7xl mx-auto px-4 sm:px-6 py-16 text-center text-sm text-slate-500">
@@ -297,7 +304,7 @@ export default function App() {
         ) : !teacher ? (
           <TeacherLoginView
             onSuccess={handleTeacherLoginSuccess}
-            onSwitchToStudent={() => switchToStudentMode(selectedClass, 1, selectedDate)}
+            onSwitchToStudent={() => switchToStudentMode(selectedClass, 1, selectedDate, false)}
           />
         ) : (
           <div className="max-w-7xl mx-auto px-4 sm:px-6 py-6 space-y-6">
@@ -398,17 +405,17 @@ export default function App() {
               </div>
             </div>
 
-            {getActiveStorageMode() === 'local' && activeTab !== 'firebase' && (
+            {getActiveStorageMode() === 'local' && activeTab !== 'database' && (
               <div className="bg-amber-50 border border-amber-200 rounded-2xl px-4 py-3 text-xs text-amber-900 flex flex-col sm:flex-row sm:items-center justify-between gap-2 no-print">
                 <span>
-                  Ứng dụng đang lưu dữ liệu cục bộ trên trình duyệt này. Để học sinh quét mã QR từ điện thoại khác xem được dữ liệu thời gian thực, hãy kết nối Supabase hoặc Firebase.
+                  Ứng dụng đang lưu dữ liệu cục bộ trên trình duyệt này. Để học sinh quét mã QR từ điện thoại khác xem được dữ liệu thời gian thực, hãy kết nối cơ sở dữ liệu Supabase.
                 </span>
                 <button
                   type="button"
-                  onClick={() => setActiveTab('firebase')}
+                  onClick={() => setActiveTab('database')}
                   className="font-semibold text-blue-700 hover:underline whitespace-nowrap self-start sm:self-auto"
                 >
-                  Xem hướng dẫn kết nối Database →
+                  Xem hướng dẫn kết nối Supabase →
                 </button>
               </div>
             )}
@@ -431,8 +438,8 @@ export default function App() {
               ))}
             </div>
 
-            {activeTab === 'firebase' ? (
-              <FirebaseGuideTab onRefreshWorkspace={loadWorkspace} />
+            {activeTab === 'database' ? (
+              <DatabaseGuideTab onRefreshWorkspace={loadWorkspace} />
             ) : workspaceLoading && !workspace ? (
               <div className="bg-white border border-slate-200 rounded-2xl p-12 text-center text-sm text-slate-500">
                 Đang tải dữ liệu lớp học...
@@ -451,7 +458,7 @@ export default function App() {
                   </button>
                   <button
                     type="button"
-                    onClick={() => setActiveTab('firebase')}
+                    onClick={() => setActiveTab('database')}
                     className="px-4 py-2 text-xs font-semibold text-slate-700 bg-slate-100 hover:bg-slate-200 rounded-xl"
                   >
                     Mở tab Liên kết Database
@@ -470,7 +477,7 @@ export default function App() {
                     allocationConfig={workspace.allocationConfig}
                     assignments={workspace.assignments}
                     onRefreshWorkspace={loadWorkspace}
-                    onPreviewStudentQr={(cls, grp, dt) => switchToStudentMode(cls, grp, dt)}
+                    onPreviewStudentQr={(cls, grp, dt) => switchToStudentMode(cls, grp, dt, true)}
                   />
                 )}
                 {activeTab === 'grading' && (

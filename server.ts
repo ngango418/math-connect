@@ -23,6 +23,7 @@ import type {
   Student,
   TeacherUser,
 } from './shared/types.ts';
+import { verifyQrAccessToken } from './shared/qrToken.ts';
 
 const PORT = Number(process.env.PORT || 3000);
 
@@ -132,16 +133,24 @@ async function startServer() {
     res.json({ ok: true });
   });
 
-  // Public Student QR Mission Endpoint
+  // Public Student QR Mission Endpoint (locked to 1 class + 1 group + 1 date via QR token)
   app.get('/api/public/mission', (req, res) => {
     const db = loadDb();
-    const rawClass = String(req.query.class || db.classes[0]?.id || '9/23');
-    const classId = normalizeClassId(rawClass);
+    const rawClass = String(req.query.class || '').trim();
+    const classId = rawClass || db.classes[0]?.id || '9/1';
     const groupNumber = normalizeGroupNumber(req.query.group as string | undefined);
     const date =
       typeof req.query.date === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(req.query.date)
         ? req.query.date
         : getTodayDateString();
+    const qrToken = String(req.query.k || '');
+
+    if (!verifyQrAccessToken(classId, groupNumber, date, qrToken)) {
+      res.status(403).json({
+        error: 'Mã QR không hợp lệ hoặc thông tin lớp/nhóm trong đường dẫn đã bị thay đổi. Vui lòng quét đúng mã QR của nhóm bạn.',
+      });
+      return;
+    }
 
     const exactAssignment = db.assignments.find((a) => a.classId === classId && a.date === date);
     const fallbackAssignment = !exactAssignment
@@ -177,17 +186,6 @@ async function startServer() {
     );
 
     const publishedGrade = gradeRecord?.entries.find((e) => e.groupNumber === groupNumber) || null;
-    const allGroupScores = gradeRecord
-      ? [...gradeRecord.entries]
-          .sort((a, b) => b.finalScore - a.finalScore)
-          .map((e) => ({
-            groupNumber: e.groupNumber,
-            baseScore: e.baseScore,
-            bonusPoints: e.bonusPoints,
-            penaltyPoints: e.penaltyPoints,
-            finalScore: e.finalScore,
-          }))
-      : null;
 
     const payload: PublicStudentMissionResponse = {
       classId,
@@ -199,7 +197,7 @@ async function startServer() {
       homework: groupPlan?.homework || 'Chưa có bài tập về nhà cho nhóm hôm nay.',
       teacherNote: groupPlan?.teacherNote || '',
       publishedGrade,
-      allGroupScores,
+      allGroupScores: null,
     };
 
     res.json(payload);

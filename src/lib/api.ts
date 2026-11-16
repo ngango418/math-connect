@@ -1,21 +1,3 @@
-import {
-  createUserWithEmailAndPassword,
-  onAuthStateChanged,
-  sendPasswordResetEmail,
-  signInWithEmailAndPassword,
-  signOut,
-  updateProfile,
-} from 'firebase/auth';
-import {
-  collection,
-  deleteDoc,
-  doc,
-  getDocs,
-  query,
-  setDoc,
-  where,
-  writeBatch,
-} from 'firebase/firestore';
 import type {
   ClassroomInfo,
   CoreMission,
@@ -29,8 +11,8 @@ import type {
   TeacherUser,
   WorkspaceSnapshot,
 } from '../../shared/types.ts';
+import { verifyQrAccessToken } from '../../shared/qrToken.ts';
 import { createClientSeedSnapshot, createDefaultAllocationConfig } from './defaultSeedData.ts';
-import { getFirebaseServices, isFirebaseEnvConfigured } from './firebaseClient.ts';
 import {
   fromDbAssignment,
   fromDbClass,
@@ -56,13 +38,9 @@ const LOCAL_SNAPSHOT_KEY = 'classqr_local_snapshot_v3';
 const LOCAL_TEACHERS_KEY = 'classqr_local_teachers_v1';
 const LOCAL_SESSION_KEY = 'classqr_local_session_v1';
 
-export type StorageBackendMode = 'supabase' | 'firebase' | 'server' | 'local';
+export type StorageBackendMode = 'supabase' | 'server' | 'local';
 
-let detectedBackendMode: StorageBackendMode = isSupabaseEnvConfigured()
-  ? 'supabase'
-  : isFirebaseEnvConfigured()
-  ? 'firebase'
-  : 'server';
+let detectedBackendMode: StorageBackendMode = isSupabaseEnvConfigured() ? 'supabase' : 'server';
 
 export function getActiveStorageMode(): StorageBackendMode {
   return detectedBackendMode;
@@ -158,10 +136,6 @@ function saveLocalSnapshot(snapshot: WorkspaceSnapshot): void {
   localStorage.setItem(LOCAL_SNAPSHOT_KEY, JSON.stringify(snapshot));
 }
 
-function makeDocSafeId(raw: string): string {
-  return raw.replace(/\//g, '-');
-}
-
 function normalizeClassId(raw: string): string {
   const c = (raw || '').trim();
   return c || '9/1';
@@ -239,40 +213,6 @@ function mapSupabaseError(err: unknown): string {
     return 'Email chưa được xác nhận. Kiểm tra hộp thư hoặc vào Supabase → Authentication → Providers → Email tắt "Confirm email".';
   }
   return raw;
-}
-
-function mapFirestoreError(err: unknown): string {
-  const msg = err instanceof Error ? err.message : String(err);
-  if (msg.includes('permission-denied') || msg.includes('Missing or insufficient permissions')) {
-    return 'Firestore từ chối quyền ghi (permission-denied). Hãy mở tab Liên kết Database, chép bộ Rules và nhấn Publish trên Firebase Console.';
-  }
-  if (msg.includes('not-found') || msg.includes('does not exist') || msg.includes('FAILED_PRECONDITION')) {
-    return 'Dự án Firebase này chưa bật Firestore Database. Hãy vào Firebase Console → Build → Firestore Database → Create database.';
-  }
-  return msg;
-}
-
-type BatchOp =
-  | { type: 'set'; ref: ReturnType<typeof doc>; data: unknown }
-  | { type: 'delete'; ref: ReturnType<typeof doc> };
-
-async function commitChunkedBatch(
-  db: NonNullable<ReturnType<typeof getFirebaseServices>>['db'],
-  ops: BatchOp[]
-): Promise<void> {
-  const CHUNK_SIZE = 400;
-  for (let i = 0; i < ops.length; i += CHUNK_SIZE) {
-    const chunk = ops.slice(i, i + CHUNK_SIZE);
-    const batch = writeBatch(db);
-    for (const op of chunk) {
-      if (op.type === 'set') {
-        batch.set(op.ref, op.data);
-      } else {
-        batch.delete(op.ref);
-      }
-    }
-    await batch.commit();
-  }
 }
 
 export async function initializeSupabaseDatabase(forceReset = false): Promise<{
@@ -362,123 +302,6 @@ export async function initializeSupabaseDatabase(forceReset = false): Promise<{
   };
 }
 
-export async function initializeFirestoreDatabase(forceReset = false): Promise<{
-  created: boolean;
-  counts: { missions: number; students: number; assignments: number; grades: number };
-}> {
-  const fb = getFirebaseServices();
-  if (!fb) {
-    throw new Error('Chưa cấu hình đầy đủ biến môi trường VITE_FIREBASE_* cho ứng dụng.');
-  }
-  try {
-    const [missionsSnap, classesSnap] = await Promise.all([
-      getDocs(collection(fb.db, 'coreMissions')),
-      getDocs(collection(fb.db, 'classes')),
-    ]);
-
-    if (!missionsSnap.empty && !classesSnap.empty && !forceReset) {
-      const [studentsSnap, assignSnap, gradesSnap] = await Promise.all([
-        getDocs(collection(fb.db, 'students')),
-        getDocs(collection(fb.db, 'dailyAssignments')),
-        getDocs(collection(fb.db, 'dailyGrades')),
-      ]);
-      return {
-        created: false,
-        counts: {
-          missions: missionsSnap.size,
-          students: studentsSnap.size,
-          assignments: assignSnap.size,
-          grades: gradesSnap.size,
-        },
-      };
-    }
-
-    const ops: BatchOp[] = [];
-    if (forceReset) {
-      const [oldStudents, oldClasses, oldAssign, oldGrades] = await Promise.all([
-        getDocs(collection(fb.db, 'students')),
-        getDocs(collection(fb.db, 'classes')),
-        getDocs(collection(fb.db, 'dailyAssignments')),
-        getDocs(collection(fb.db, 'dailyGrades')),
-      ]);
-      for (const d of oldStudents.docs) ops.push({ type: 'delete', ref: d.ref });
-      for (const d of oldClasses.docs) ops.push({ type: 'delete', ref: d.ref });
-      for (const d of oldAssign.docs) ops.push({ type: 'delete', ref: d.ref });
-      for (const d of oldGrades.docs) ops.push({ type: 'delete', ref: d.ref });
-    }
-
-    const seed = createClientSeedSnapshot();
-
-    for (const c of seed.classes) {
-      ops.push({ type: 'set', ref: doc(fb.db, 'classes', makeDocSafeId(c.id)), data: c });
-    }
-    for (const m of seed.coreMissions) {
-      ops.push({ type: 'set', ref: doc(fb.db, 'coreMissions', String(m.id)), data: m });
-    }
-    ops.push({ type: 'set', ref: doc(fb.db, 'settings', 'allocationConfig'), data: seed.allocationConfig });
-
-    for (const s of seed.students) {
-      ops.push({ type: 'set', ref: doc(fb.db, 'students', s.id), data: s });
-    }
-    for (const a of seed.assignments) {
-      ops.push({ type: 'set', ref: doc(fb.db, 'dailyAssignments', makeDocSafeId(a.id)), data: a });
-    }
-    for (const g of seed.grades) {
-      ops.push({ type: 'set', ref: doc(fb.db, 'dailyGrades', makeDocSafeId(g.id)), data: g });
-    }
-    await commitChunkedBatch(fb.db, ops);
-
-    return {
-      created: true,
-      counts: {
-        missions: seed.coreMissions.length,
-        students: seed.students.length,
-        assignments: seed.assignments.length,
-        grades: seed.grades.length,
-      },
-    };
-  } catch (err) {
-    throw new Error(mapFirestoreError(err));
-  }
-}
-
-function waitForFirebaseUser(): Promise<TeacherUser | null> {
-  const fb = getFirebaseServices();
-  if (!fb) return Promise.resolve(null);
-  return new Promise((resolve) => {
-    const unsub = onAuthStateChanged(fb.auth, (user) => {
-      unsub();
-      if (!user) {
-        resolve(null);
-      } else {
-        resolve({
-          id: user.uid,
-          email: user.email || '',
-          name: user.displayName || 'Giáo viên',
-          subject: 'Khối 9',
-        });
-      }
-    });
-  });
-}
-
-function mapFirebaseAuthError(err: unknown): string {
-  const msg = err instanceof Error ? err.message : String(err);
-  if (msg.includes('auth/invalid-credential') || msg.includes('auth/wrong-password') || msg.includes('auth/user-not-found')) {
-    return 'Email hoặc mật khẩu Firebase không đúng.';
-  }
-  if (msg.includes('auth/email-already-in-use')) {
-    return 'Email này đã được đăng ký trên Firebase.';
-  }
-  if (msg.includes('auth/operation-not-allowed')) {
-    return 'Chức năng đăng nhập Email/Password chưa được bật trong Firebase Console → Authentication → Sign-in method.';
-  }
-  if (msg.includes('auth/unauthorized-domain')) {
-    return 'Tên miền này chưa được thêm vào Authorized domains trong Firebase Console → Authentication → Settings.';
-  }
-  return msg;
-}
-
 export async function loginTeacher(email: string, password: string): Promise<{ token: string; user: TeacherUser }> {
   const sb = getSupabaseClient();
   if (sb) {
@@ -498,23 +321,6 @@ export async function loginTeacher(email: string, password: string): Promise<{ t
         subject: meta.subject || 'Khối 9',
       },
     };
-  }
-
-  const fb = getFirebaseServices();
-  if (fb) {
-    detectedBackendMode = 'firebase';
-    try {
-      const cred = await signInWithEmailAndPassword(fb.auth, email.trim(), password);
-      const user: TeacherUser = {
-        id: cred.user.uid,
-        email: cred.user.email || email.trim(),
-        name: cred.user.displayName || 'Giáo viên',
-        subject: 'Khối 9',
-      };
-      return { token: await cred.user.getIdToken(), user };
-    } catch (err) {
-      throw new Error(mapFirebaseAuthError(err));
-    }
   }
 
   try {
@@ -583,26 +389,6 @@ export async function registerTeacher(
     };
   }
 
-  const fb = getFirebaseServices();
-  if (fb) {
-    detectedBackendMode = 'firebase';
-    try {
-      const cred = await createUserWithEmailAndPassword(fb.auth, email.trim(), password);
-      if (name.trim()) {
-        await updateProfile(cred.user, { displayName: name.trim() });
-      }
-      const user: TeacherUser = {
-        id: cred.user.uid,
-        email: cred.user.email || email.trim(),
-        name: name.trim() || 'Giáo viên',
-        subject: subject.trim() || 'Khối 9',
-      };
-      return { token: await cred.user.getIdToken(), user };
-    } catch (err) {
-      throw new Error(mapFirebaseAuthError(err));
-    }
-  }
-
   try {
     const res = await serverFetch<{ token: string; user: TeacherUser }>('/api/auth/register', {
       method: 'POST',
@@ -656,12 +442,6 @@ export async function fetchCurrentTeacher(): Promise<TeacherUser | null> {
     };
   }
 
-  const fb = getFirebaseServices();
-  if (fb) {
-    detectedBackendMode = 'firebase';
-    return waitForFirebaseUser();
-  }
-
   const token = getStoredToken();
   if (!token) return null;
 
@@ -692,12 +472,6 @@ export async function logoutTeacher(): Promise<void> {
     return;
   }
 
-  const fb = getFirebaseServices();
-  if (fb) {
-    await signOut(fb.auth);
-    return;
-  }
-
   try {
     await serverFetch('/api/auth/logout', { method: 'POST' });
   } catch {
@@ -712,17 +486,11 @@ export async function resetTeacherPassword(email: string): Promise<void> {
     throw new Error('Vui lòng nhập email trước khi yêu cầu đặt lại mật khẩu.');
   }
   const sb = getSupabaseClient();
-  if (sb) {
-    const { error } = await sb.auth.resetPasswordForEmail(email.trim());
-    if (error) throw new Error(mapSupabaseError(error));
-    return;
+  if (!sb) {
+    throw new Error('Chức năng đặt lại mật khẩu qua email chỉ dùng khi đã kết nối Supabase.');
   }
-
-  const fb = getFirebaseServices();
-  if (!fb) {
-    throw new Error('Chức năng đặt lại mật khẩu qua email chỉ dùng khi đã kết nối Supabase hoặc Firebase.');
-  }
-  await sendPasswordResetEmail(fb.auth, email.trim());
+  const { error } = await sb.auth.resetPasswordForEmail(email.trim());
+  if (error) throw new Error(mapSupabaseError(error));
 }
 
 export async function fetchPublicClasses(): Promise<ClassroomInfo[]> {
@@ -739,18 +507,6 @@ export async function fetchPublicClasses(): Promise<ClassroomInfo[]> {
     return createClientSeedSnapshot().classes;
   }
 
-  const fb = getFirebaseServices();
-  if (fb) {
-    try {
-      const snap = await getDocs(collection(fb.db, 'classes'));
-      const list = snap.docs.map((d) => d.data() as ClassroomInfo);
-      if (list.length > 0) return sortClassroomsNaturally(list);
-    } catch {
-      // fall through to default
-    }
-    return createClientSeedSnapshot().classes;
-  }
-
   try {
     const res = await serverFetch<{ classes: ClassroomInfo[] }>('/api/public/classes');
     return sortClassroomsNaturally(res.classes);
@@ -762,14 +518,21 @@ export async function fetchPublicClasses(): Promise<ClassroomInfo[]> {
 export async function fetchPublicStudentMission(
   classId: string,
   groupNumber: number,
-  date: string
+  date: string,
+  qrToken: string
 ): Promise<PublicStudentMissionResponse> {
+  if (!verifyQrAccessToken(classId, groupNumber as GroupNumber, date, qrToken)) {
+    throw new Error(
+      'Mã QR không hợp lệ hoặc thông tin lớp/nhóm trong đường dẫn đã bị thay đổi. Vui lòng quét đúng mã QR của nhóm bạn.'
+    );
+  }
+
   const sb = getSupabaseClient();
   if (sb) {
     detectedBackendMode = 'supabase';
     const [mRes, sRes, aRes, gRes] = await Promise.all([
       sb.from('core_missions').select('*'),
-      sb.from('students').select('*').eq('class_id', classId),
+      sb.from('students').select('*').eq('class_id', classId).eq('group_number', groupNumber),
       sb.from('daily_assignments').select('*').eq('class_id', classId),
       sb.from('daily_grades').select('*').eq('class_id', classId).eq('published_to_students', true),
     ]);
@@ -803,37 +566,12 @@ export async function fetchPublicStudentMission(
     );
   }
 
-  const fb = getFirebaseServices();
-  if (fb) {
-    detectedBackendMode = 'firebase';
-    const [missionsSnap, studentsSnap, assignSnap, gradesSnap] = await Promise.all([
-      getDocs(collection(fb.db, 'coreMissions')),
-      getDocs(query(collection(fb.db, 'students'), where('classId', '==', classId))),
-      getDocs(query(collection(fb.db, 'dailyAssignments'), where('classId', '==', classId))),
-      getDocs(query(collection(fb.db, 'dailyGrades'), where('classId', '==', classId))),
-    ]);
-
-    const coreMissions = missionsSnap.docs.map((d) => d.data() as CoreMission);
-    const studentsList = studentsSnap.docs.map((d) => normalizeStudentRecord(d.data() as Student));
-    const assignmentsList = assignSnap.docs.map((d) => d.data() as DailyAssignmentRecord);
-    const gradesList = gradesSnap.docs.map((d) => d.data() as DailyGradeRecord);
-
-    return buildPublicMissionResponse(
-      classId,
-      groupNumber as GroupNumber,
-      date,
-      coreMissions,
-      studentsList,
-      assignmentsList,
-      gradesList
-    );
-  }
-
   try {
     const params = new URLSearchParams({
       class: classId,
       group: String(groupNumber),
       date,
+      k: qrToken,
     });
     const res = await serverFetch<PublicStudentMissionResponse>(`/api/public/mission?${params.toString()}`);
     detectedBackendMode = 'server';
@@ -894,17 +632,6 @@ function buildPublicMissionResponse(
     (g) => g.classId === classId && g.date === targetDate && g.publishedToStudents
   );
   const publishedGrade = gradeRecord?.entries.find((e) => e.groupNumber === groupNumber) || null;
-  const allGroupScores = gradeRecord
-    ? [...gradeRecord.entries]
-        .sort((a, b) => b.finalScore - a.finalScore)
-        .map((e) => ({
-          groupNumber: e.groupNumber,
-          baseScore: e.baseScore,
-          bonusPoints: e.bonusPoints,
-          penaltyPoints: e.penaltyPoints,
-          finalScore: e.finalScore,
-        }))
-    : null;
 
   return {
     classId,
@@ -916,7 +643,7 @@ function buildPublicMissionResponse(
     homework: groupPlan?.homework || 'Chưa có bài tập về nhà cho nhóm hôm nay.',
     teacherNote: groupPlan?.teacherNote || '',
     publishedGrade,
-    allGroupScores,
+    allGroupScores: null,
   };
 }
 
@@ -953,33 +680,6 @@ export async function fetchWorkspace(): Promise<WorkspaceSnapshot> {
     };
   }
 
-  const fb = getFirebaseServices();
-  if (fb) {
-    detectedBackendMode = 'firebase';
-    await initializeFirestoreDatabase(false);
-    const [classesSnap, studentsSnap, missionsSnap, settingsSnap, assignSnap, gradesSnap] = await Promise.all([
-      getDocs(collection(fb.db, 'classes')),
-      getDocs(collection(fb.db, 'students')),
-      getDocs(collection(fb.db, 'coreMissions')),
-      getDocs(collection(fb.db, 'settings')),
-      getDocs(collection(fb.db, 'dailyAssignments')),
-      getDocs(collection(fb.db, 'dailyGrades')),
-    ]);
-    const allocDoc = settingsSnap.docs.find((d) => d.id === 'allocationConfig');
-    return {
-      classes: sortClassroomsNaturally(classesSnap.docs.map((d) => d.data() as ClassroomInfo)),
-      students: studentsSnap.docs
-        .map((d) => normalizeStudentRecord(d.data() as Student))
-        .sort((a, b) => a.studentCode.localeCompare(b.studentCode, 'vi', { numeric: true })),
-      coreMissions: missionsSnap.docs
-        .map((d) => d.data() as CoreMission)
-        .sort((a, b) => a.id - b.id),
-      allocationConfig: (allocDoc?.data() as MissionAllocationConfig | undefined) || createDefaultAllocationConfig(),
-      assignments: assignSnap.docs.map((d) => d.data() as DailyAssignmentRecord),
-      grades: gradesSnap.docs.map((d) => d.data() as DailyGradeRecord),
-    };
-  }
-
   if (detectedBackendMode === 'local') {
     return getLocalSnapshot();
   }
@@ -1010,12 +710,6 @@ export async function createClassroom(name: string): Promise<ClassroomInfo> {
     return created;
   }
 
-  const fb = getFirebaseServices();
-  if (fb) {
-    await setDoc(doc(fb.db, 'classes', makeDocSafeId(clean)), created);
-    return created;
-  }
-
   if (detectedBackendMode === 'local') {
     const snap = getLocalSnapshot();
     if (snap.classes.some((c) => c.name.toLowerCase() === clean.toLowerCase())) {
@@ -1041,12 +735,6 @@ export async function deleteClassroom(classId: string): Promise<void> {
       sb.from('daily_assignments').delete().eq('class_id', classId),
       sb.from('daily_grades').delete().eq('class_id', classId),
     ]);
-    return;
-  }
-
-  const fb = getFirebaseServices();
-  if (fb) {
-    await deleteDoc(doc(fb.db, 'classes', makeDocSafeId(classId)));
     return;
   }
 
@@ -1090,12 +778,6 @@ export async function createStudent(payload: Omit<Student, 'id'>): Promise<Stude
     return created;
   }
 
-  const fb = getFirebaseServices();
-  if (fb) {
-    await setDoc(doc(fb.db, 'students', created.id), created);
-    return created;
-  }
-
   if (detectedBackendMode === 'local') {
     const snap = getLocalSnapshot();
     snap.students.push(created);
@@ -1125,16 +807,6 @@ export async function updateStudent(id: string, payload: Partial<Student>): Prom
     return updated;
   }
 
-  const fb = getFirebaseServices();
-  if (fb) {
-    const snap = await getDocs(query(collection(fb.db, 'students'), where('id', '==', id)));
-    const current = snap.docs[0]?.data() as Student | undefined;
-    if (!current) throw new Error('Không tìm thấy học sinh.');
-    const updated: Student = { ...normalizeStudentRecord(current), ...payload };
-    await setDoc(doc(fb.db, 'students', id), updated);
-    return updated;
-  }
-
   if (detectedBackendMode === 'local') {
     const snap = getLocalSnapshot();
     const idx = snap.students.findIndex((s) => s.id === id);
@@ -1155,12 +827,6 @@ export async function deleteStudent(id: string): Promise<void> {
   if (sb) {
     const { error } = await sb.from('students').delete().eq('id', id);
     if (error) throw new Error(mapSupabaseError(error));
-    return;
-  }
-
-  const fb = getFirebaseServices();
-  if (fb) {
-    await deleteDoc(doc(fb.db, 'students', id));
     return;
   }
 
@@ -1211,32 +877,6 @@ export async function bulkStudentsAction(payload: {
       const { error: upErr } = await sb.from('students').upsert(dbStudents.slice(i, i + 200));
       if (upErr) throw new Error(mapSupabaseError(upErr));
     }
-    return { students: updated, classes: nextClasses };
-  }
-
-  const fb = getFirebaseServices();
-  if (fb) {
-    const snap = await fetchWorkspace();
-    const { students: updated, classes: nextClasses } = applyBulkStudentTransform(
-      snap.students,
-      snap.classes,
-      payload
-    );
-    const ops: BatchOp[] = [];
-    const existingIds = new Set(snap.students.map((s) => s.id));
-    const nextIds = new Set(updated.map((s) => s.id));
-    for (const oldId of existingIds) {
-      if (!nextIds.has(oldId)) {
-        ops.push({ type: 'delete', ref: doc(fb.db, 'students', oldId) });
-      }
-    }
-    for (const stu of updated) {
-      ops.push({ type: 'set', ref: doc(fb.db, 'students', stu.id), data: stu });
-    }
-    for (const cls of nextClasses) {
-      ops.push({ type: 'set', ref: doc(fb.db, 'classes', makeDocSafeId(cls.id)), data: cls });
-    }
-    await commitChunkedBatch(fb.db, ops);
     return { students: updated, classes: nextClasses };
   }
 
@@ -1358,20 +998,6 @@ export async function updateCoreMission(
     return updated;
   }
 
-  const fb = getFirebaseServices();
-  if (fb) {
-    const snap = await fetchWorkspace();
-    const mission = snap.coreMissions.find((m) => m.id === missionId);
-    if (!mission) throw new Error('Không tìm thấy nhiệm vụ.');
-    const updated: CoreMission = {
-      ...mission,
-      ...(payload.title !== undefined ? { title: payload.title.trim() } : {}),
-      ...(payload.summary !== undefined ? { summary: payload.summary.trim() } : {}),
-    };
-    await setDoc(doc(fb.db, 'coreMissions', String(missionId)), updated);
-    return updated;
-  }
-
   if (detectedBackendMode === 'local') {
     const snap = getLocalSnapshot();
     const mission = snap.coreMissions.find((m) => m.id === missionId);
@@ -1413,21 +1039,6 @@ export async function addMissionCard(
     return card;
   }
 
-  const fb = getFirebaseServices();
-  if (fb) {
-    const snap = await fetchWorkspace();
-    const mission = snap.coreMissions.find((m) => m.id === missionId);
-    if (!mission) throw new Error('Không tìm thấy nhiệm vụ.');
-    const card: MissionCard = {
-      id: `c-${missionId}-${crypto.randomUUID().slice(0, 6)}`,
-      missionId,
-      ...payload,
-    };
-    mission.cards.push(card);
-    await setDoc(doc(fb.db, 'coreMissions', String(missionId)), mission);
-    return card;
-  }
-
   if (detectedBackendMode === 'local') {
     const snap = getLocalSnapshot();
     const mission = snap.coreMissions.find((m) => m.id === missionId);
@@ -1466,20 +1077,6 @@ export async function deleteMissionCard(cardId: string): Promise<void> {
     return;
   }
 
-  const fb = getFirebaseServices();
-  if (fb) {
-    const snap = await fetchWorkspace();
-    const batch = writeBatch(fb.db);
-    for (const mission of snap.coreMissions) {
-      const nextCards = mission.cards.filter((c) => c.id !== cardId);
-      if (nextCards.length !== mission.cards.length) {
-        batch.set(doc(fb.db, 'coreMissions', String(mission.id)), { ...mission, cards: nextCards });
-      }
-    }
-    await batch.commit();
-    return;
-  }
-
   if (detectedBackendMode === 'local') {
     const snap = getLocalSnapshot();
     for (const m of snap.coreMissions) {
@@ -1511,12 +1108,6 @@ export async function saveAllocationConfig(
     return config;
   }
 
-  const fb = getFirebaseServices();
-  if (fb) {
-    await setDoc(doc(fb.db, 'settings', 'allocationConfig'), config);
-    return config;
-  }
-
   if (detectedBackendMode === 'local') {
     const snap = getLocalSnapshot();
     snap.allocationConfig = config;
@@ -1544,12 +1135,6 @@ export async function saveDailyAssignment(
   if (sb) {
     const { error } = await sb.from('daily_assignments').upsert(toDbAssignment(record));
     if (error) throw new Error(mapSupabaseError(error));
-    return record;
-  }
-
-  const fb = getFirebaseServices();
-  if (fb) {
-    await setDoc(doc(fb.db, 'dailyAssignments', makeDocSafeId(id)), record);
     return record;
   }
 
@@ -1586,12 +1171,6 @@ export async function saveDailyGrade(
   if (sb) {
     const { error } = await sb.from('daily_grades').upsert(toDbGrade(record));
     if (error) throw new Error(mapSupabaseError(error));
-    return record;
-  }
-
-  const fb = getFirebaseServices();
-  if (fb) {
-    await setDoc(doc(fb.db, 'dailyGrades', makeDocSafeId(id)), record);
     return record;
   }
 

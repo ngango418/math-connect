@@ -5,24 +5,23 @@ import {
   Calendar,
   CheckSquare,
   Crown,
+  Lock,
+  QrCode,
   RefreshCw,
   Rocket,
+  ShieldAlert,
   Square,
   Users,
 } from 'lucide-react';
-import {
-  GROUP_NUMBERS,
-  type ClassroomInfo,
-  type GroupNumber,
-  type PublicStudentMissionResponse,
-} from '../../shared/types.ts';
-import { fetchPublicClasses, fetchPublicStudentMission } from '../lib/api.ts';
+import type { GroupNumber, PublicStudentMissionResponse } from '../../shared/types.ts';
+import { verifyQrAccessToken } from '../../shared/qrToken.ts';
+import { fetchPublicStudentMission } from '../lib/api.ts';
 
 interface StudentPortalProps {
-  initialClassId: string;
-  initialGroup: GroupNumber;
-  initialDate: string;
-  onSyncUrlParams: (classId: string, group: GroupNumber, date: string) => void;
+  classId: string;
+  groupNumber: GroupNumber;
+  date: string;
+  qrToken: string;
 }
 
 const MISSION_ACCENTS: Record<number, { border: string; text: string; bg: string }> = {
@@ -34,34 +33,29 @@ const MISSION_ACCENTS: Record<number, { border: string; text: string; bg: string
 };
 
 export function StudentPortal({
-  initialClassId,
-  initialGroup,
-  initialDate,
-  onSyncUrlParams,
+  classId,
+  groupNumber,
+  date,
+  qrToken,
 }: StudentPortalProps) {
-  const [classes, setClasses] = useState<ClassroomInfo[]>([]);
-  const [classId, setClassId] = useState<string>(initialClassId);
-  const [groupNumber, setGroupNumber] = useState<GroupNumber>(initialGroup);
-  const [date, setDate] = useState<string>(initialDate);
+  const isAuthorizedQr = verifyQrAccessToken(classId, groupNumber, date, qrToken);
+  const hasTamperedToken = Boolean(qrToken.trim()) && !isAuthorizedQr;
+
   const [data, setData] = useState<PublicStudentMissionResponse | null>(null);
-  const [loading, setLoading] = useState<boolean>(true);
+  const [loading, setLoading] = useState<boolean>(isAuthorizedQr);
   const [error, setError] = useState<string>('');
   const [checkedCards, setCheckedCards] = useState<Record<string, boolean>>({});
 
-  useEffect(() => {
-    fetchPublicClasses().then((list) => {
-      setClasses(list);
-      if (list.length > 0 && !list.some((c) => c.id === initialClassId)) {
-        setClassId(list[0].id);
-      }
-    });
-  }, [initialClassId]);
-
-  const loadMission = async (cls: string, grp: GroupNumber, dt: string) => {
+  const loadMission = async () => {
+    if (!isAuthorizedQr) {
+      setData(null);
+      setLoading(false);
+      return;
+    }
     setLoading(true);
     setError('');
     try {
-      const res = await fetchPublicStudentMission(cls, grp, dt);
+      const res = await fetchPublicStudentMission(classId, groupNumber, date, qrToken);
       setData(res);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Không thể tải thông tin nhiệm vụ nhóm.');
@@ -71,20 +65,46 @@ export function StudentPortal({
   };
 
   useEffect(() => {
-    setClassId(initialClassId);
-    setGroupNumber(initialGroup);
-    setDate(initialDate);
-  }, [initialClassId, initialGroup, initialDate]);
-
-  useEffect(() => {
-    onSyncUrlParams(classId, groupNumber, date);
-    loadMission(classId, groupNumber, date);
     setCheckedCards({});
-  }, [classId, groupNumber, date, onSyncUrlParams]);
+    loadMission();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [classId, groupNumber, date, qrToken]);
 
   const toggleCardDone = (instanceKey: string) => {
     setCheckedCards((prev) => ({ ...prev, [instanceKey]: !prev[instanceKey] }));
   };
+
+  if (!isAuthorizedQr) {
+    return (
+      <div className="max-w-xl mx-auto px-4 sm:px-6 py-12">
+        <div className="bg-white border border-slate-200 rounded-2xl p-8 text-center space-y-4">
+          <div
+            className={`w-14 h-14 mx-auto rounded-2xl flex items-center justify-center ${
+              hasTamperedToken ? 'bg-rose-50 text-rose-600' : 'bg-blue-50 text-blue-600'
+            }`}
+          >
+            {hasTamperedToken ? <ShieldAlert className="w-7 h-7" /> : <QrCode className="w-7 h-7" />}
+          </div>
+
+          <h1 className="text-xl font-extrabold text-slate-900">
+            {hasTamperedToken
+              ? 'Liên kết QR không hợp lệ'
+              : 'Vui lòng quét mã QR của nhóm mình'}
+          </h1>
+
+          <p className="text-sm text-slate-600 leading-relaxed">
+            {hasTamperedToken
+              ? 'Thông tin lớp hoặc nhóm trong đường dẫn đã bị thay đổi nên hệ thống từ chối truy cập. Hãy dùng camera điện thoại quét lại đúng mã QR của nhóm bạn.'
+              : 'Để bảo mật thông tin lớp học và tránh xem nhầm nhiệm vụ của nhóm khác, bạn chỉ có thể truy cập đúng nhóm mình bằng cách quét mã QR do giáo viên phát.'}
+          </p>
+
+          <div className="pt-2 text-xs text-slate-500 bg-slate-50 border border-slate-200 rounded-xl p-3.5">
+            Mỗi mã QR chỉ mở được đúng <strong>1 lớp · 1 nhóm · 1 buổi học</strong> tương ứng.
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   const completedCount = data
     ? data.cards.filter((_, idx) => checkedCards[`${data.date}-${idx}`]).length
@@ -94,85 +114,35 @@ export function StudentPortal({
 
   return (
     <div className="max-w-5xl mx-auto px-4 sm:px-6 py-8">
-      {/* Friendly Welcome & Selector Card */}
+      {/* Locked Group Header Card (No class/group switchers) */}
       <div className="bg-white border border-slate-200 rounded-2xl p-6 mb-6">
-        <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
           <div>
             <div className="inline-flex items-center gap-1.5 text-xs font-semibold text-blue-700 mb-1">
               <Rocket className="w-4 h-4" />
               Sân chơi Nhiệm vụ Nhóm
             </div>
             <h1 className="text-2xl font-extrabold tracking-tight text-slate-900">
-              Cổng Thông Tin Học Sinh
+              Nhiệm vụ Lớp {classId} — Nhóm {groupNumber}
             </h1>
-            <p className="text-sm text-slate-600 mt-1">
-              Quét mã QR của nhóm mình hoặc chọn lớp &amp; nhóm bên dưới để nhận thẻ thử thách hôm nay!
-            </p>
+            <div className="mt-2 inline-flex flex-wrap items-center gap-2 text-xs font-medium text-emerald-800 bg-emerald-50 border border-emerald-200 rounded-lg px-2.5 py-1">
+              <Lock className="w-3.5 h-3.5 shrink-0" />
+              <span>Đã khóa theo mã QR: Chỉ xem được Nhóm {groupNumber} · Lớp {classId}</span>
+              <span aria-hidden="true">·</span>
+              <span className="inline-flex items-center gap-1 font-mono tabular-nums">
+                <Calendar className="w-3 h-3" />
+                {date}
+              </span>
+            </div>
           </div>
           <button
             type="button"
-            onClick={() => loadMission(classId, groupNumber, date)}
-            className="inline-flex items-center gap-2 px-4 py-2 text-sm font-semibold text-slate-700 bg-slate-100 hover:bg-slate-200 rounded-xl transition-colors whitespace-nowrap shrink-0 self-start lg:self-auto"
+            onClick={loadMission}
+            className="inline-flex items-center gap-2 px-4 py-2 text-sm font-semibold text-slate-700 bg-slate-100 hover:bg-slate-200 rounded-xl transition-colors whitespace-nowrap shrink-0 self-start sm:self-auto"
           >
             <RefreshCw className="w-4 h-4" />
             Làm mới
           </button>
-        </div>
-
-        <div className="mt-5 pt-5 border-t border-slate-100 grid grid-cols-1 md:grid-cols-12 gap-4">
-          <div className="md:col-span-3">
-            <label htmlFor="student-class-select" className="block text-xs font-semibold text-slate-500 mb-1.5">
-              Chọn Lớp học
-            </label>
-            <select
-              id="student-class-select"
-              value={classId}
-              onChange={(e) => setClassId(e.target.value)}
-              className="w-full px-3 py-2 text-sm font-bold text-blue-700 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-600"
-            >
-              {(classes.length > 0 ? classes : [{ id: classId, name: classId }]).map((cls) => (
-                <option key={cls.id} value={cls.id}>
-                  Lớp {cls.name}
-                </option>
-              ))}
-            </select>
-          </div>
-
-          <div className="md:col-span-6">
-            <label className="block text-xs font-semibold text-slate-500 mb-1.5">Chọn Nhóm (1–8)</label>
-            <div className="grid grid-cols-4 sm:grid-cols-8 gap-1 p-1 bg-slate-100 rounded-xl">
-              {GROUP_NUMBERS.map((grp) => (
-                <button
-                  key={grp}
-                  type="button"
-                  onClick={() => setGroupNumber(grp)}
-                  className={`py-1.5 px-2 text-xs sm:text-sm font-bold rounded-lg transition-colors whitespace-nowrap tabular-nums ${
-                    groupNumber === grp
-                      ? 'bg-blue-600 text-white shadow-sm'
-                      : 'text-slate-600 hover:text-slate-900 hover:bg-white/60'
-                  }`}
-                >
-                  N{grp}
-                </button>
-              ))}
-            </div>
-          </div>
-
-          <div className="md:col-span-3">
-            <label htmlFor="student-date-input" className="block text-xs font-semibold text-slate-500 mb-1.5">
-              Ngày học
-            </label>
-            <div className="relative">
-              <Calendar className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
-              <input
-                id="student-date-input"
-                type="date"
-                value={date}
-                onChange={(e) => setDate(e.target.value)}
-                className="w-full pl-9 pr-3 py-2 text-sm font-mono tabular-nums bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-600"
-              />
-            </div>
-          </div>
         </div>
       </div>
 

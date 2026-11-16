@@ -218,7 +218,7 @@ export function StudentRosterTab({ classId, students, onRefreshWorkspace }: Stud
           note: r.note,
         })),
       });
-      setStatusMsg(`Đã nhập thành công ${importPreview.length} học sinh từ file Excel vào Firebase/Hệ thống.`);
+      setStatusMsg(`Đã nhập thành công ${importPreview.length} học sinh từ file Excel vào Database/Hệ thống.`);
       setImportPreview(null);
       await onRefreshWorkspace();
     } catch (err) {

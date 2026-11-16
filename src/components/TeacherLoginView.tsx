@@ -2,7 +2,6 @@ import { useState, type FormEvent } from 'react';
 import { Lock, LogIn, UserPlus } from 'lucide-react';
 import type { TeacherUser } from '../../shared/types.ts';
 import { loginTeacher, registerTeacher, resetTeacherPassword } from '../lib/api.ts';
-import { getFirebaseProjectId, isFirebaseEnvConfigured } from '../lib/firebaseClient.ts';
 import { getSupabaseProjectRef, isSupabaseEnvConfigured } from '../lib/supabaseClient.ts';
 
 interface TeacherLoginViewProps {
@@ -13,12 +12,9 @@ interface TeacherLoginViewProps {
 export function TeacherLoginView({ onSuccess, onSwitchToStudent }: TeacherLoginViewProps) {
   const supabaseReady = isSupabaseEnvConfigured();
   const supabaseRef = getSupabaseProjectRef();
-  const firebaseReady = isFirebaseEnvConfigured();
-  const firebaseProjectId = getFirebaseProjectId();
-  const cloudReady = supabaseReady || firebaseReady;
   const [mode, setMode] = useState<'login' | 'register'>('login');
-  const [email, setEmail] = useState(cloudReady ? '' : 'giaovien@truonghoc.edu.vn');
-  const [password, setPassword] = useState(cloudReady ? '' : '123456');
+  const [email, setEmail] = useState(supabaseReady ? '' : 'giaovien@truonghoc.edu.vn');
+  const [password, setPassword] = useState(supabaseReady ? '' : '123456');
   const [name, setName] = useState('');
   const [subject, setSubject] = useState('Khối 9');
   const [loading, setLoading] = useState(false);
@@ -85,18 +81,6 @@ export function TeacherLoginView({ onSuccess, onSwitchToStudent }: TeacherLoginV
                   <strong>Đăng ký mới</strong> ở bên phải để tạo tài khoản giáo viên đầu tiên.
                 </p>
               </div>
-            ) : firebaseReady ? (
-              <div className="mt-6 pt-6 border-t border-slate-200 space-y-2.5 text-sm">
-                <div className="font-semibold text-emerald-700">
-                  Đã kết nối Firebase Project: <span className="font-mono">{firebaseProjectId}</span>
-                </div>
-                <p className="text-xs text-slate-600 leading-relaxed">
-                  Nếu đây là lần đầu bạn sử dụng dự án Firebase mới, hãy chọn tab{' '}
-                  <strong>Đăng ký mới</strong> ở bên phải để tạo tài khoản giáo viên đầu tiên.
-                  Ngay sau khi đăng ký thành công, hệ thống sẽ tự động khởi tạo toàn bộ các bảng dữ liệu
-                  (Lớp học, Học sinh, 5 Nhiệm vụ, Cấu hình 8 Nhóm, Thẻ QR, Bảng điểm) lên Firestore của bạn.
-                </p>
-              </div>
             ) : (
               <div className="mt-6 pt-6 border-t border-slate-200 space-y-3 text-sm">
                 <div className="font-semibold text-slate-900">Tài khoản giáo viên mặc định để dùng thử:</div>
@@ -109,7 +93,7 @@ export function TeacherLoginView({ onSuccess, onSwitchToStudent }: TeacherLoginV
                   </div>
                 </div>
                 <p className="text-xs text-slate-500">
-                  Sau khi đăng nhập, vào tab <strong>Liên kết Database</strong> để xem hướng dẫn gắn Supabase hoặc Firebase cho Vercel.
+                  Sau khi đăng nhập, vào tab <strong>Liên kết Database</strong> để xem hướng dẫn gắn Supabase PostgreSQL cho Vercel.
                 </p>
               </div>
             )}
@@ -201,7 +185,7 @@ export function TeacherLoginView({ onSuccess, onSwitchToStudent }: TeacherLoginV
             <div>
               <div className="flex items-center justify-between mb-1">
                 <label className="block text-xs font-medium text-slate-700">Mật khẩu</label>
-                {cloudReady && mode === 'login' && (
+                {supabaseReady && mode === 'login' && (
                   <button
                     type="button"
                     onClick={handleResetPassword}

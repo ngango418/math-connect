@@ -35,6 +35,7 @@ import {
 } from '../lib/api.ts';
 import { autoDealMissionCards } from '../lib/balancedRandom.ts';
 import { createEmptyEightGroups } from '../lib/defaultSeedData.ts';
+import { buildStudentQrUrl } from '../../shared/qrToken.ts';
 import { QrCodeBox } from './QrCodeBox.tsx';
 
 interface MissionQrTabProps {
@@ -291,13 +292,7 @@ export function MissionQrTab({
 
   const getQrUrlForGroup = (groupNum: GroupNumber) => {
     const origin = typeof window !== 'undefined' ? window.location.origin : '';
-    const params = new URLSearchParams({
-      view: 'student',
-      class: classId,
-      group: String(groupNum),
-      date: selectedDate,
-    });
-    return `${origin}/?${params.toString()}`;
+    return buildStudentQrUrl(origin, classId, groupNum, selectedDate);
   };
 
   const totalCardsNeeded = GROUP_NUMBERS.reduce(
