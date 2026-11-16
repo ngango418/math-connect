@@ -1,6 +1,7 @@
 import {
   createUserWithEmailAndPassword,
   onAuthStateChanged,
+  sendPasswordResetEmail,
   signInWithEmailAndPassword,
   signOut,
   updateProfile,
@@ -16,23 +17,23 @@ import {
   writeBatch,
 } from 'firebase/firestore';
 import type {
-  ClassId,
+  ClassroomInfo,
   CoreMission,
   DailyAssignmentRecord,
   DailyGradeRecord,
   GroupNumber,
+  MissionAllocationConfig,
   MissionCard,
   PublicStudentMissionResponse,
-  SeedLevel,
   Student,
   TeacherUser,
   WorkspaceSnapshot,
 } from '../../shared/types.ts';
-import { createClientSeedSnapshot } from './defaultSeedData.ts';
+import { createClientSeedSnapshot, createDefaultAllocationConfig } from './defaultSeedData.ts';
 import { getFirebaseServices, isFirebaseEnvConfigured } from './firebaseClient.ts';
 
 const TOKEN_STORAGE_KEY = 'classqr_teacher_token';
-const LOCAL_SNAPSHOT_KEY = 'classqr_local_snapshot_v1';
+const LOCAL_SNAPSHOT_KEY = 'classqr_local_snapshot_v2';
 const LOCAL_TEACHERS_KEY = 'classqr_local_teachers_v1';
 const LOCAL_SESSION_KEY = 'classqr_local_session_v1';
 
@@ -73,7 +74,7 @@ function getLocalTeachers(): LocalTeacherRecord[] {
     {
       id: 'teacher-1',
       email: 'giaovien@truonghoc.edu.vn',
-      name: 'Giáo viên Bộ môn',
+      name: 'Giáo viên Chủ nhiệm',
       subject: 'Tổ Chuyên môn Khối 9',
       password: '123456',
     },
@@ -86,11 +87,35 @@ function saveLocalTeachers(list: LocalTeacherRecord[]): void {
   localStorage.setItem(LOCAL_TEACHERS_KEY, JSON.stringify(list));
 }
 
+function normalizeStudentRecord(raw: Partial<Student>): Student {
+  return {
+    id: raw.id || `stu-${crypto.randomUUID().slice(0, 8)}`,
+    studentCode: raw.studentCode || '',
+    name: raw.name || '',
+    birthDate: raw.birthDate || '',
+    classId: raw.classId || '9/23',
+    to: Math.min(4, Math.max(1, Number(raw.to) || 1)),
+    groupNumber: normalizeGroupNumber(raw.groupNumber),
+    isLeader: Boolean(raw.isLeader),
+    score: normalizeScore(raw.score ?? 7),
+    note: raw.note || '',
+  };
+}
+
 function getLocalSnapshot(): WorkspaceSnapshot {
   const raw = localStorage.getItem(LOCAL_SNAPSHOT_KEY);
   if (raw) {
     try {
-      return JSON.parse(raw) as WorkspaceSnapshot;
+      const parsed = JSON.parse(raw) as Partial<WorkspaceSnapshot>;
+      const seed = createClientSeedSnapshot();
+      return {
+        classes: parsed.classes && parsed.classes.length > 0 ? parsed.classes : seed.classes,
+        students: Array.isArray(parsed.students) ? parsed.students.map(normalizeStudentRecord) : seed.students,
+        coreMissions: parsed.coreMissions && parsed.coreMissions.length > 0 ? parsed.coreMissions : seed.coreMissions,
+        allocationConfig: parsed.allocationConfig || seed.allocationConfig,
+        assignments: Array.isArray(parsed.assignments) ? parsed.assignments : seed.assignments,
+        grades: Array.isArray(parsed.grades) ? parsed.grades : seed.grades,
+      };
     } catch {
       // fall through
     }
@@ -108,22 +133,21 @@ function makeDocSafeId(raw: string): string {
   return raw.replace(/\//g, '-');
 }
 
-function normalizeClassId(raw: string): ClassId {
-  const c = raw.replace('-', '/').trim();
-  if (c === '9/23' || c === '9/26' || c === '9/28') return c;
-  return '9/23';
+function normalizeClassId(raw: string): string {
+  const c = (raw || '').trim();
+  return c || '9/23';
 }
 
 function normalizeGroupNumber(raw: unknown): GroupNumber {
   const n = Number(raw);
-  if (n >= 1 && n <= 5) return n as GroupNumber;
+  if (n >= 1 && n <= 8) return Math.round(n) as GroupNumber;
   return 1;
 }
 
-function normalizeSeed(raw: unknown): SeedLevel {
+function normalizeScore(raw: unknown): number {
   const n = Number(raw);
-  if (n >= 1 && n <= 5) return Math.round(n) as SeedLevel;
-  return 3;
+  if (!Number.isNaN(n) && n >= 1 && n <= 10) return Number(n.toFixed(1));
+  return 7;
 }
 
 class ServerUnavailableError extends Error {
@@ -149,7 +173,6 @@ async function serverFetch<T>(url: string, options: RequestInit = {}): Promise<T
     throw new ServerUnavailableError();
   }
 
-  // On static hosts (like Vercel without serverless /api), /api/* returns 404 HTML
   const contentType = res.headers.get('content-type') || '';
   if (res.status === 404 && !contentType.includes('application/json')) {
     throw new ServerUnavailableError();
@@ -168,10 +191,10 @@ async function serverFetch<T>(url: string, options: RequestInit = {}): Promise<T
 function mapFirestoreError(err: unknown): string {
   const msg = err instanceof Error ? err.message : String(err);
   if (msg.includes('permission-denied') || msg.includes('Missing or insufficient permissions')) {
-    return 'Firestore từ chối quyền ghi (permission-denied). Hãy vào Firebase Console → Firestore Database → Rules, dán bộ Rules cho phép giáo viên đã đăng nhập ghi dữ liệu và nhấn Publish.';
+    return 'Firestore từ chối quyền ghi (permission-denied). Hãy mở tab Liên kết Firebase, chép bộ Rules và nhấn Publish trên Firebase Console.';
   }
   if (msg.includes('not-found') || msg.includes('does not exist') || msg.includes('FAILED_PRECONDITION')) {
-    return 'Dự án Firebase này chưa khởi tạo Firestore Database. Hãy vào Firebase Console → Build → Firestore Database → nhấn Create database.';
+    return 'Dự án Firebase này chưa bật Firestore Database. Hãy vào Firebase Console → Build → Firestore Database → Create database.';
   }
   return msg;
 }
@@ -185,8 +208,12 @@ export async function initializeFirestoreDatabase(forceReset = false): Promise<{
     throw new Error('Chưa cấu hình đầy đủ biến môi trường VITE_FIREBASE_* cho ứng dụng.');
   }
   try {
-    const missionsSnap = await getDocs(collection(fb.db, 'coreMissions'));
-    if (!missionsSnap.empty && !forceReset) {
+    const [missionsSnap, classesSnap] = await Promise.all([
+      getDocs(collection(fb.db, 'coreMissions')),
+      getDocs(collection(fb.db, 'classes')),
+    ]);
+
+    if (!missionsSnap.empty && !classesSnap.empty && !forceReset) {
       const [studentsSnap, assignSnap, gradesSnap] = await Promise.all([
         getDocs(collection(fb.db, 'students')),
         getDocs(collection(fb.db, 'dailyAssignments')),
@@ -206,9 +233,14 @@ export async function initializeFirestoreDatabase(forceReset = false): Promise<{
     const seed = createClientSeedSnapshot();
     const batch = writeBatch(fb.db);
 
+    for (const c of seed.classes) {
+      batch.set(doc(fb.db, 'classes', makeDocSafeId(c.id)), c);
+    }
     for (const m of seed.coreMissions) {
       batch.set(doc(fb.db, 'coreMissions', String(m.id)), m);
     }
+    batch.set(doc(fb.db, 'settings', 'allocationConfig'), seed.allocationConfig);
+
     for (const s of seed.students) {
       batch.set(doc(fb.db, 'students', s.id), s);
     }
@@ -261,7 +293,7 @@ function waitForFirebaseUser(): Promise<TeacherUser | null> {
 function mapFirebaseAuthError(err: unknown): string {
   const msg = err instanceof Error ? err.message : String(err);
   if (msg.includes('auth/invalid-credential') || msg.includes('auth/wrong-password') || msg.includes('auth/user-not-found')) {
-    return 'Email hoặc mật khẩu Firebase không đúng (hoặc bạn chưa tạo tài khoản này trong Firebase Authentication).';
+    return 'Email hoặc mật khẩu Firebase không đúng.';
   }
   if (msg.includes('auth/email-already-in-use')) {
     return 'Email này đã được đăng ký trên Firebase.';
@@ -432,8 +464,40 @@ export async function logoutTeacher(): Promise<void> {
   setStoredToken(null);
 }
 
+export async function resetTeacherPassword(email: string): Promise<void> {
+  const fb = getFirebaseServices();
+  if (!fb) {
+    throw new Error('Chức năng đặt lại mật khẩu qua email chỉ dùng khi đã kết nối Firebase.');
+  }
+  if (!email.trim()) {
+    throw new Error('Vui lòng nhập email trước khi yêu cầu đặt lại mật khẩu.');
+  }
+  await sendPasswordResetEmail(fb.auth, email.trim());
+}
+
+export async function fetchPublicClasses(): Promise<ClassroomInfo[]> {
+  const fb = getFirebaseServices();
+  if (fb) {
+    try {
+      const snap = await getDocs(collection(fb.db, 'classes'));
+      const list = snap.docs.map((d) => d.data() as ClassroomInfo);
+      if (list.length > 0) return list;
+    } catch {
+      // fall through to default
+    }
+    return createClientSeedSnapshot().classes;
+  }
+
+  try {
+    const res = await serverFetch<{ classes: ClassroomInfo[] }>('/api/public/classes');
+    return res.classes;
+  } catch {
+    return getLocalSnapshot().classes;
+  }
+}
+
 export async function fetchPublicStudentMission(
-  classId: ClassId,
+  classId: string,
   groupNumber: number,
   date: string
 ): Promise<PublicStudentMissionResponse> {
@@ -448,7 +512,7 @@ export async function fetchPublicStudentMission(
     ]);
 
     const coreMissions = missionsSnap.docs.map((d) => d.data() as CoreMission);
-    const studentsList = studentsSnap.docs.map((d) => d.data() as Student);
+    const studentsList = studentsSnap.docs.map((d) => normalizeStudentRecord(d.data() as Student));
     const assignmentsList = assignSnap.docs.map((d) => d.data() as DailyAssignmentRecord);
     const gradesList = gradesSnap.docs.map((d) => d.data() as DailyGradeRecord);
 
@@ -489,7 +553,7 @@ export async function fetchPublicStudentMission(
 }
 
 function buildPublicMissionResponse(
-  classId: ClassId,
+  classId: string,
   groupNumber: GroupNumber,
   date: string,
   coreMissions: CoreMission[],
@@ -512,12 +576,14 @@ function buildPublicMissionResponse(
 
   const groupStudents = students
     .filter((s) => s.classId === classId && s.groupNumber === groupNumber)
-    .map(({ id, studentCode, name, to, groupNumber: gn, note }) => ({
+    .map(({ id, studentCode, name, birthDate, to, groupNumber: gn, isLeader, note }) => ({
       id,
       studentCode,
       name,
+      birthDate,
       to,
       groupNumber: gn,
+      isLeader,
       note,
     }));
 
@@ -526,10 +592,16 @@ function buildPublicMissionResponse(
     (g) => g.classId === classId && g.date === targetDate && g.publishedToStudents
   );
   const publishedGrade = gradeRecord?.entries.find((e) => e.groupNumber === groupNumber) || null;
-  const allGroupRankings = gradeRecord
+  const allGroupScores = gradeRecord
     ? [...gradeRecord.entries]
-        .sort((a, b) => b.qualityOrder - a.qualityOrder)
-        .map((e) => ({ groupNumber: e.groupNumber, qualityOrder: e.qualityOrder, score: e.score }))
+        .sort((a, b) => b.finalScore - a.finalScore)
+        .map((e) => ({
+          groupNumber: e.groupNumber,
+          baseScore: e.baseScore,
+          bonusPoints: e.bonusPoints,
+          penaltyPoints: e.penaltyPoints,
+          finalScore: e.finalScore,
+        }))
     : null;
 
   return {
@@ -542,7 +614,7 @@ function buildPublicMissionResponse(
     homework: groupPlan?.homework || 'Chưa có bài tập về nhà cho nhóm hôm nay.',
     teacherNote: groupPlan?.teacherNote || '',
     publishedGrade,
-    allGroupRankings,
+    allGroupScores,
   };
 }
 
@@ -551,17 +623,22 @@ export async function fetchWorkspace(): Promise<WorkspaceSnapshot> {
   if (fb) {
     detectedBackendMode = 'firebase';
     await seedFirestoreIfEmpty();
-    const [studentsSnap, missionsSnap, assignSnap, gradesSnap] = await Promise.all([
+    const [classesSnap, studentsSnap, missionsSnap, settingsSnap, assignSnap, gradesSnap] = await Promise.all([
+      getDocs(collection(fb.db, 'classes')),
       getDocs(collection(fb.db, 'students')),
       getDocs(collection(fb.db, 'coreMissions')),
+      getDocs(collection(fb.db, 'settings')),
       getDocs(collection(fb.db, 'dailyAssignments')),
       getDocs(collection(fb.db, 'dailyGrades')),
     ]);
+    const allocDoc = settingsSnap.docs.find((d) => d.id === 'allocationConfig');
     return {
-      students: studentsSnap.docs.map((d) => d.data() as Student),
+      classes: classesSnap.docs.map((d) => d.data() as ClassroomInfo),
+      students: studentsSnap.docs.map((d) => normalizeStudentRecord(d.data() as Student)),
       coreMissions: missionsSnap.docs
         .map((d) => d.data() as CoreMission)
         .sort((a, b) => a.id - b.id),
+      allocationConfig: (allocDoc?.data() as MissionAllocationConfig | undefined) || createDefaultAllocationConfig(),
       assignments: assignSnap.docs.map((d) => d.data() as DailyAssignmentRecord),
       grades: gradesSnap.docs.map((d) => d.data() as DailyGradeRecord),
     };
@@ -580,6 +657,70 @@ export async function fetchWorkspace(): Promise<WorkspaceSnapshot> {
     detectedBackendMode = 'local';
     return getLocalSnapshot();
   }
+}
+
+export async function createClassroom(name: string): Promise<ClassroomInfo> {
+  const clean = name.trim();
+  const created: ClassroomInfo = {
+    id: clean,
+    name: clean,
+    createdAt: new Date().toISOString().slice(0, 10),
+  };
+
+  const fb = getFirebaseServices();
+  if (fb) {
+    await setDoc(doc(fb.db, 'classes', makeDocSafeId(clean)), created);
+    return created;
+  }
+
+  if (detectedBackendMode === 'local') {
+    const snap = getLocalSnapshot();
+    if (snap.classes.some((c) => c.name.toLowerCase() === clean.toLowerCase())) {
+      throw new Error(`Lớp ${clean} đã tồn tại.`);
+    }
+    snap.classes.push(created);
+    saveLocalSnapshot(snap);
+    return created;
+  }
+
+  return serverFetch<ClassroomInfo>('/api/classes', {
+    method: 'POST',
+    body: JSON.stringify({ name: clean }),
+  });
+}
+
+export async function deleteClassroom(classId: string): Promise<void> {
+  const fb = getFirebaseServices();
+  if (fb) {
+    await deleteDoc(doc(fb.db, 'classes', makeDocSafeId(classId)));
+    return;
+  }
+
+  if (detectedBackendMode === 'local') {
+    const snap = getLocalSnapshot();
+    snap.classes = snap.classes.filter((c) => c.id !== classId);
+    snap.students = snap.students.filter((s) => s.classId !== classId);
+    snap.assignments = snap.assignments.filter((a) => a.classId !== classId);
+    snap.grades = snap.grades.filter((g) => g.classId !== classId);
+    saveLocalSnapshot(snap);
+    return;
+  }
+
+  await serverFetch(`/api/classes/${encodeURIComponent(classId)}`, {
+    method: 'DELETE',
+  });
+}
+
+export async function aiParseExcelRoster(
+  rawRows: Record<string, unknown>[],
+  defaultClassId: string,
+  sheetName: string
+): Promise<Array<Partial<Student>>> {
+  const res = await serverFetch<{ students: Array<Partial<Student>> }>('/api/ai/parse-roster', {
+    method: 'POST',
+    body: JSON.stringify({ rawRows, defaultClassId, sheetName }),
+  });
+  return res.students;
 }
 
 export async function createStudent(payload: Omit<Student, 'id'>): Promise<Student> {
@@ -616,7 +757,7 @@ export async function updateStudent(id: string, payload: Partial<Student>): Prom
     const snap = await getDocs(query(collection(fb.db, 'students'), where('id', '==', id)));
     const current = snap.docs[0]?.data() as Student | undefined;
     if (!current) throw new Error('Không tìm thấy học sinh.');
-    const updated: Student = { ...current, ...payload };
+    const updated: Student = { ...normalizeStudentRecord(current), ...payload };
     await setDoc(doc(fb.db, 'students', id), updated);
     return updated;
   }
@@ -657,13 +798,17 @@ export async function deleteStudent(id: string): Promise<void> {
 
 export async function bulkStudentsAction(payload: {
   mode: 'import-merge' | 'import-replace' | 'patch';
-  classId?: ClassId;
+  classId?: string;
   students: Array<Partial<Student> & { id?: string }>;
-}): Promise<{ students: Student[] }> {
+}): Promise<{ students: Student[]; classes?: ClassroomInfo[] }> {
   const fb = getFirebaseServices();
   if (fb) {
     const snap = await fetchWorkspace();
-    const updated = applyBulkStudentTransform(snap.students, payload);
+    const { students: updated, classes: nextClasses } = applyBulkStudentTransform(
+      snap.students,
+      snap.classes,
+      payload
+    );
     const batch = writeBatch(fb.db);
     const existingIds = new Set(snap.students.map((s) => s.id));
     const nextIds = new Set(updated.map((s) => s.id));
@@ -675,18 +820,23 @@ export async function bulkStudentsAction(payload: {
     for (const stu of updated) {
       batch.set(doc(fb.db, 'students', stu.id), stu);
     }
+    for (const cls of nextClasses) {
+      batch.set(doc(fb.db, 'classes', makeDocSafeId(cls.id)), cls);
+    }
     await batch.commit();
-    return { students: updated };
+    return { students: updated, classes: nextClasses };
   }
 
   if (detectedBackendMode === 'local') {
     const snap = getLocalSnapshot();
-    snap.students = applyBulkStudentTransform(snap.students, payload);
+    const res = applyBulkStudentTransform(snap.students, snap.classes, payload);
+    snap.students = res.students;
+    snap.classes = res.classes;
     saveLocalSnapshot(snap);
-    return { students: snap.students };
+    return { students: snap.students, classes: snap.classes };
   }
 
-  return serverFetch<{ students: Student[] }>('/api/students/bulk', {
+  return serverFetch<{ students: Student[]; classes?: ClassroomInfo[] }>('/api/students/bulk', {
     method: 'POST',
     body: JSON.stringify(payload),
   });
@@ -694,13 +844,15 @@ export async function bulkStudentsAction(payload: {
 
 function applyBulkStudentTransform(
   currentList: Student[],
+  currentClasses: ClassroomInfo[],
   payload: {
     mode: 'import-merge' | 'import-replace' | 'patch';
-    classId?: ClassId;
+    classId?: string;
     students: Array<Partial<Student> & { id?: string }>;
   }
-): Student[] {
+): { students: Student[]; classes: ClassroomInfo[] } {
   let list = [...currentList];
+  const classes = [...currentClasses];
   const targetClass = payload.classId ? normalizeClassId(payload.classId) : undefined;
 
   if (payload.mode === 'import-replace' && targetClass) {
@@ -714,33 +866,40 @@ function applyBulkStudentTransform(
       if (idx !== -1) {
         list[idx] = {
           ...list[idx],
-          ...(patchItem.to !== undefined ? { to: Math.max(1, Number(patchItem.to) || 1) } : {}),
+          ...(patchItem.to !== undefined ? { to: Math.min(4, Math.max(1, Number(patchItem.to) || 1)) } : {}),
           ...(patchItem.groupNumber !== undefined
             ? { groupNumber: normalizeGroupNumber(patchItem.groupNumber) }
             : {}),
-          ...(patchItem.seed !== undefined ? { seed: normalizeSeed(patchItem.seed) } : {}),
+          ...(patchItem.isLeader !== undefined ? { isLeader: Boolean(patchItem.isLeader) } : {}),
+          ...(patchItem.score !== undefined ? { score: normalizeScore(patchItem.score) } : {}),
+          ...(patchItem.birthDate !== undefined ? { birthDate: patchItem.birthDate } : {}),
           ...(patchItem.note !== undefined ? { note: patchItem.note } : {}),
         };
       }
     }
-    return list;
+    return { students: list, classes };
   }
 
   for (const item of payload.students) {
     if (!item.name || !item.name.trim()) continue;
-    const cls = normalizeClassId(item.classId || targetClass || '9/23');
-    const cleanCode = cls.replace('/', '');
+    const cls = normalizeClassId(item.classId || targetClass || classes[0]?.id || '9/23');
+    if (!classes.some((c) => c.id === cls)) {
+      classes.push({ id: cls, name: cls, createdAt: new Date().toISOString().slice(0, 10) });
+    }
+    const cleanCode = cls.replace(/[^a-zA-Z0-9]/g, '');
     const existingByCode = item.studentCode
       ? list.find((s) => s.classId === cls && s.studentCode.toLowerCase() === item.studentCode!.trim().toLowerCase())
       : undefined;
 
     if (existingByCode && payload.mode === 'import-merge') {
       existingByCode.name = item.name.trim();
-      existingByCode.to = Math.max(1, Number(item.to) || existingByCode.to);
+      existingByCode.birthDate = item.birthDate !== undefined ? item.birthDate.trim() : existingByCode.birthDate;
+      existingByCode.to = Math.min(4, Math.max(1, Number(item.to) || existingByCode.to));
       existingByCode.groupNumber = item.groupNumber
         ? normalizeGroupNumber(item.groupNumber)
         : existingByCode.groupNumber;
-      existingByCode.seed = item.seed ? normalizeSeed(item.seed) : existingByCode.seed;
+      existingByCode.isLeader = item.isLeader !== undefined ? Boolean(item.isLeader) : existingByCode.isLeader;
+      existingByCode.score = item.score !== undefined ? normalizeScore(item.score) : existingByCode.score;
       existingByCode.note = item.note !== undefined ? item.note.trim() : existingByCode.note;
     } else {
       list.push({
@@ -749,15 +908,17 @@ function applyBulkStudentTransform(
           item.studentCode?.trim() ||
           `${cleanCode}-${String(list.filter((s) => s.classId === cls).length + 1).padStart(2, '0')}`,
         name: item.name.trim(),
+        birthDate: (item.birthDate || '').trim(),
         classId: cls,
-        to: Math.max(1, Number(item.to) || 1),
+        to: Math.min(4, Math.max(1, Number(item.to) || 1)),
         groupNumber: normalizeGroupNumber(item.groupNumber),
-        seed: normalizeSeed(item.seed),
+        isLeader: Boolean(item.isLeader),
+        score: normalizeScore(item.score),
         note: item.note?.trim() || '',
       });
     }
   }
-  return list;
+  return { students: list, classes };
 }
 
 export async function updateCoreMission(
@@ -854,7 +1015,7 @@ export async function deleteMissionCard(cardId: string): Promise<void> {
       m.cards = m.cards.filter((c) => c.id !== cardId);
     }
     for (const a of snap.assignments) {
-      ([1, 2, 3, 4, 5] as GroupNumber[]).forEach((g) => {
+      ([1, 2, 3, 4, 5, 6, 7, 8] as GroupNumber[]).forEach((g) => {
         if (a.groups[g]) {
           a.groups[g].cardIds = a.groups[g].cardIds.filter((id) => id !== cardId);
         }
@@ -866,6 +1027,28 @@ export async function deleteMissionCard(cardId: string): Promise<void> {
 
   await serverFetch(`/api/cards/${encodeURIComponent(cardId)}`, {
     method: 'DELETE',
+  });
+}
+
+export async function saveAllocationConfig(
+  config: MissionAllocationConfig
+): Promise<MissionAllocationConfig> {
+  const fb = getFirebaseServices();
+  if (fb) {
+    await setDoc(doc(fb.db, 'settings', 'allocationConfig'), config);
+    return config;
+  }
+
+  if (detectedBackendMode === 'local') {
+    const snap = getLocalSnapshot();
+    snap.allocationConfig = config;
+    saveLocalSnapshot(snap);
+    return config;
+  }
+
+  return serverFetch<MissionAllocationConfig>('/api/allocation-config', {
+    method: 'PUT',
+    body: JSON.stringify(config),
   });
 }
 
@@ -907,6 +1090,10 @@ export async function saveDailyGrade(
   const record: DailyGradeRecord = {
     id,
     ...payload,
+    entries: payload.entries.map((e) => ({
+      ...e,
+      finalScore: Number((e.baseScore - e.penaltyPoints + e.bonusPoints).toFixed(2)),
+    })),
     updatedAt: new Date().toISOString(),
   };
 

@@ -1,28 +1,34 @@
-export type ClassId = '9/23' | '9/26' | '9/28';
+export type ClassId = string;
 
-export const CLASS_IDS: ClassId[] = ['9/23', '9/26', '9/28'];
+export interface ClassroomInfo {
+  id: string;
+  name: string;
+  createdAt: string;
+}
 
-export type GroupNumber = 1 | 2 | 3 | 4 | 5;
+export type GroupNumber = 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8;
 
-export const GROUP_NUMBERS: GroupNumber[] = [1, 2, 3, 4, 5];
+export const GROUP_NUMBERS: GroupNumber[] = [1, 2, 3, 4, 5, 6, 7, 8];
 
-export type SeedLevel = 1 | 2 | 3 | 4 | 5;
+export const DEFAULT_CLASS_NAMES: string[] = ['9/23', '9/26', '9/28'];
 
 export interface Student {
   id: string;
   studentCode: string;
   name: string;
-  classId: ClassId;
-  to: number; // Tổ 1, 2, 3, 4...
-  groupNumber: GroupNumber; // Nhóm 1 -> 5
-  seed: SeedLevel; // 1 = Cao nhất, 5 = Thấp nhất
+  birthDate: string; // DD/MM/YYYY hoặc YYYY-MM-DD
+  classId: string;
+  to: number; // Tổ 1, 2, 3, 4
+  groupNumber: GroupNumber; // Nhóm 1 -> 8
+  isLeader: boolean; // Nhóm trưởng (tick / untick)
+  score: number; // Điểm đánh giá năng lực 1 -> 10
   note?: string;
 }
 
 export interface MissionCard {
   id: string;
-  missionId: number; // 1..5 (5 nhiệm vụ cứng)
-  code: string; // e.g., "NV1-A", "NV1-B", "NV1-B (Bản sao)"
+  missionId: number; // 1..5
+  code: string;
   title: string;
   description: string;
   durationMinutes: number;
@@ -36,16 +42,22 @@ export interface CoreMission {
   cards: MissionCard[];
 }
 
+export interface MissionAllocationConfig {
+  cardsPerGroup: Record<GroupNumber, number>;
+  missionCounts: Record<number, number>; // Số nhóm/thẻ dùng cho mỗi trong 5 nhiệm vụ (ví dụ 2 hoặc 3 nhóm trùng)
+  allowRepeatSameGroup: boolean;
+}
+
 export interface GroupDailyPlan {
   groupNumber: GroupNumber;
-  cardIds: string[]; // Variable number of cards per group on that day; allows duplicate cardIds if desired or duplicate cards
+  cardIds: string[];
   homework: string;
   teacherNote?: string;
 }
 
 export interface DailyAssignmentRecord {
   id: string; // `${classId}_${date}`
-  classId: ClassId;
+  classId: string;
   date: string; // YYYY-MM-DD
   lessonTopic: string;
   groups: Record<GroupNumber, GroupDailyPlan>;
@@ -54,15 +66,16 @@ export interface DailyAssignmentRecord {
 
 export interface GroupGradeEntry {
   groupNumber: GroupNumber;
-  qualityOrder: number; // 1 = Thấp nhất -> 5 = Cao nhất (xếp thứ tự từ thấp đến cao)
-  score: number; // 0 - 10
-  completedCardsCount: number;
+  baseScore: number; // Điểm giáo viên cho (0-10)
+  bonusPoints: number; // Điểm cộng (+)
+  penaltyPoints: number; // Điểm trừ (-)
+  finalScore: number; // = baseScore - penaltyPoints + bonusPoints
   feedback: string;
 }
 
 export interface DailyGradeRecord {
   id: string; // `${classId}_${date}`
-  classId: ClassId;
+  classId: string;
   date: string; // YYYY-MM-DD
   lessonTopic: string;
   entries: GroupGradeEntry[];
@@ -78,21 +91,23 @@ export interface TeacherUser {
 }
 
 export interface PublicStudentMissionResponse {
-  classId: ClassId;
+  classId: string;
   groupNumber: GroupNumber;
   date: string;
   lessonTopic: string;
-  students: Pick<Student, 'id' | 'studentCode' | 'name' | 'to' | 'groupNumber' | 'note'>[];
+  students: Pick<Student, 'id' | 'studentCode' | 'name' | 'birthDate' | 'to' | 'groupNumber' | 'isLeader' | 'note'>[];
   cards: MissionCard[];
   homework: string;
   teacherNote: string;
   publishedGrade: GroupGradeEntry | null;
-  allGroupRankings: Array<{ groupNumber: GroupNumber; qualityOrder: number; score: number }> | null;
+  allGroupScores: Array<{ groupNumber: GroupNumber; baseScore: number; bonusPoints: number; penaltyPoints: number; finalScore: number }> | null;
 }
 
 export interface WorkspaceSnapshot {
+  classes: ClassroomInfo[];
   students: Student[];
   coreMissions: CoreMission[];
+  allocationConfig: MissionAllocationConfig;
   assignments: DailyAssignmentRecord[];
   grades: DailyGradeRecord[];
 }

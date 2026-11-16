@@ -1,10 +1,11 @@
 import type {
-  ClassId,
+  ClassroomInfo,
   CoreMission,
   DailyAssignmentRecord,
   DailyGradeRecord,
+  GroupDailyPlan,
   GroupNumber,
-  SeedLevel,
+  MissionAllocationConfig,
   Student,
   WorkspaceSnapshot,
 } from '../../shared/types.ts';
@@ -25,38 +26,57 @@ function getYesterdayDateString(): string {
   return `${y}-${m}-${d}`;
 }
 
+export function createDefaultAllocationConfig(): MissionAllocationConfig {
+  return {
+    cardsPerGroup: { 1: 1, 2: 1, 3: 1, 4: 1, 5: 1, 6: 1, 7: 1, 8: 1 },
+    missionCounts: { 1: 2, 2: 2, 3: 2, 4: 1, 5: 1 }, // Tổng 8 thẻ cho 8 nhóm (NV1, NV2, NV3 mỗi cái 2 nhóm trùng)
+    allowRepeatSameGroup: false,
+  };
+}
+
+export function createEmptyEightGroups(): Record<GroupNumber, GroupDailyPlan> {
+  return {
+    1: { groupNumber: 1, cardIds: [], homework: '', teacherNote: '' },
+    2: { groupNumber: 2, cardIds: [], homework: '', teacherNote: '' },
+    3: { groupNumber: 3, cardIds: [], homework: '', teacherNote: '' },
+    4: { groupNumber: 4, cardIds: [], homework: '', teacherNote: '' },
+    5: { groupNumber: 5, cardIds: [], homework: '', teacherNote: '' },
+    6: { groupNumber: 6, cardIds: [], homework: '', teacherNote: '' },
+    7: { groupNumber: 7, cardIds: [], homework: '', teacherNote: '' },
+    8: { groupNumber: 8, cardIds: [], homework: '', teacherNote: '' },
+  };
+}
+
 export function createClientSeedSnapshot(): WorkspaceSnapshot {
   const today = getTodayDateString();
   const yesterday = getYesterdayDateString();
 
+  const classes: ClassroomInfo[] = [
+    { id: '9/23', name: '9/23', createdAt: today },
+    { id: '9/26', name: '9/26', createdAt: today },
+    { id: '9/28', name: '9/28', createdAt: today },
+  ];
+
   const coreMissions: CoreMission[] = [
     {
       id: 1,
-      title: 'Nhiệm vụ 1: Khởi động & Thu thập dữ liệu',
-      summary: 'Quan sát tình huống thực tế, đọc nhanh ngữ liệu và ghi nhận các thông số ban đầu.',
+      title: 'Nhiệm vụ 1: Khởi động & Khám phá',
+      summary: 'Quan sát tình huống thực tế, thu thập dữ liệu ban đầu và ghi nhận hiện tượng.',
       cards: [
         {
           id: 'c-1-1',
           missionId: 1,
           code: 'NV1-T01',
-          title: 'Quan sát mẫu vật & liệt kê hiện tượng',
-          description: 'Ghi chép ít nhất 4 đặc điểm nổi bật của mẫu bài học vào phiếu nhóm.',
-          durationMinutes: 8,
+          title: 'Quan sát mẫu & ghi nhận 4 chi tiết nổi bật',
+          description: 'Thảo luận nhanh và ghi ra giấy A4 ít nhất 4 phát hiện của nhóm.',
+          durationMinutes: 10,
         },
         {
           id: 'c-1-2',
           missionId: 1,
-          code: 'NV1-T02',
-          title: 'Thu thập số liệu thực nghiệm nhanh',
-          description: 'Đo đạc 3 lần liên tiếp và lập bảng giá trị trung bình cho cả nhóm.',
-          durationMinutes: 10,
-        },
-        {
-          id: 'c-1-3',
-          missionId: 1,
-          code: 'NV1-T02 (Bản sao)',
-          title: 'Thu thập số liệu thực nghiệm nhanh (Thẻ trùng)',
-          description: 'Đo đạc 3 lần liên tiếp và lập bảng giá trị trung bình cho cả nhóm.',
+          code: 'NV1-T02 (Trùng)',
+          title: 'Quan sát mẫu & thu thập số liệu thực tế',
+          description: 'Đo đạc/thống kê 3 lần liên tiếp và tính giá trị trung bình của nhóm.',
           durationMinutes: 10,
           isDuplicate: true,
         },
@@ -64,31 +84,23 @@ export function createClientSeedSnapshot(): WorkspaceSnapshot {
     },
     {
       id: 2,
-      title: 'Nhiệm vụ 2: Phân tích & Giải quyết vấn đề',
-      summary: 'Xác định nguyên nhân, mối liên hệ nhân quả và đề xuất hướng xử lý trọng tâm.',
+      title: 'Nhiệm vụ 2: Phân tích & Giải mã',
+      summary: 'Tìm ra quy luật, nguyên nhân – hệ quả và giải bài toán trọng tâm.',
       cards: [
         {
           id: 'c-2-1',
           missionId: 2,
           code: 'NV2-T01',
-          title: 'Lập sơ đồ tư duy nguyên nhân – hệ quả',
-          description: 'Trình bày sơ đồ nhánh trên giấy A3 trong thời gian quy định.',
+          title: 'Vẽ sơ đồ tư duy giải quyết vấn đề',
+          description: 'Phân tích nguyên nhân cốt lõi và trình bày dưới dạng sơ đồ nhánh rõ ràng.',
           durationMinutes: 12,
         },
         {
           id: 'c-2-2',
           missionId: 2,
-          code: 'NV2-T02',
-          title: 'Giải bài toán tình huống trọng tâm',
-          description: 'Hoàn thành 2 câu hỏi phân tích chuyên sâu và kiểm tra chéo đáp án.',
-          durationMinutes: 12,
-        },
-        {
-          id: 'c-2-3',
-          missionId: 2,
-          code: 'NV2-T01 (Bản sao)',
-          title: 'Lập sơ đồ tư duy nguyên nhân – hệ quả (Thẻ trùng)',
-          description: 'Trình bày sơ đồ nhánh trên giấy A3 trong thời gian quy định.',
+          code: 'NV2-T02 (Trùng)',
+          title: 'Giải bài tập tình huống trọng tâm',
+          description: 'Hoàn thành 2 câu hỏi phân tích và kiểm tra chéo đáp án trong nhóm.',
           durationMinutes: 12,
           isDuplicate: true,
         },
@@ -96,200 +108,171 @@ export function createClientSeedSnapshot(): WorkspaceSnapshot {
     },
     {
       id: 3,
-      title: 'Nhiệm vụ 3: Thực hành & Lập luận chuyên sâu',
-      summary: 'Áp dụng công thức/kiến thức nền tảng để giải quyết bài tập thực hành theo nhóm.',
+      title: 'Nhiệm vụ 3: Thực hành Tăng tốc',
+      summary: 'Áp dụng kiến thức vừa tìm hiểu vào bài tập thực hành nhóm.',
       cards: [
         {
           id: 'c-3-1',
           missionId: 3,
           code: 'NV3-T01',
-          title: 'Thực hành lắp ghép / giải mẫu chuẩn',
-          description: 'Thực hiện đúng quy trình 4 bước và đánh dấu điểm kiểm tra trung gian.',
+          title: 'Hoàn thành bộ 3 thử thách thực hành',
+          description: 'Chia việc cho từng thành viên giải nhanh 3 bài tập trong phiếu.',
           durationMinutes: 15,
         },
         {
           id: 'c-3-2',
           missionId: 3,
-          code: 'NV3-T02',
-          title: 'Đối chiếu sai số & hiệu chỉnh kết quả',
-          description: 'Tìm 2 lỗi sai phổ biến trong lời giải mẫu và viết lại phương án đúng.',
-          durationMinutes: 10,
-        },
-      ],
-    },
-    {
-      id: 4,
-      title: 'Nhiệm vụ 4: Phản biện & Trình bày nhóm',
-      summary: 'Đại diện nhóm báo cáo kết quả, đặt câu hỏi phản biện cho các nhóm còn lại.',
-      cards: [
-        {
-          id: 'c-4-1',
-          missionId: 4,
-          code: 'NV4-T01',
-          title: 'Thuyết trình ngắn 3 phút trước lớp',
-          description: 'Cử 1 bạn trình bày chính và 1 bạn ghi nhận câu hỏi từ các nhóm bạn.',
-          durationMinutes: 8,
-        },
-        {
-          id: 'c-4-2',
-          missionId: 4,
-          code: 'NV4-T02',
-          title: 'Đặt 2 câu hỏi phản biện nhóm bạn',
-          description: 'Chuẩn bị 2 câu hỏi chất vấn nhắm vào phần lập luận của nhóm kế bên.',
-          durationMinutes: 7,
-        },
-        {
-          id: 'c-4-3',
-          missionId: 4,
-          code: 'NV4-T02 (Bản sao)',
-          title: 'Đặt 2 câu hỏi phản biện nhóm bạn (Thẻ trùng)',
-          description: 'Chuẩn bị 2 câu hỏi chất vấn nhắm vào phần lập luận của nhóm kế bên.',
-          durationMinutes: 7,
+          code: 'NV3-T02 (Trùng)',
+          title: 'Truy tìm lỗi sai & hiệu chỉnh lời giải',
+          description: 'Phát hiện lỗi sai trong lời giải mẫu và viết lại phương án chính xác.',
+          durationMinutes: 12,
           isDuplicate: true,
         },
       ],
     },
     {
+      id: 4,
+      title: 'Nhiệm vụ 4: Thuyết trình & Phản biện',
+      summary: 'Trình bày ý tưởng trước lớp và đặt câu hỏi phản biện cho nhóm bạn.',
+      cards: [
+        {
+          id: 'c-4-1',
+          missionId: 4,
+          code: 'NV4-T01',
+          title: 'Báo cáo nhanh 3 phút & đặt 2 câu hỏi',
+          description: 'Nhóm trưởng phân công bạn trình bày và chuẩn bị 2 câu hỏi phản biện.',
+          durationMinutes: 10,
+        },
+      ],
+    },
+    {
       id: 5,
-      title: 'Nhiệm vụ 5: Tổng hợp & Vận dụng mở rộng',
-      summary: 'Rút ra kết luận bài học và liên hệ ứng dụng thực tiễn ở mức nâng cao.',
+      title: 'Nhiệm vụ 5: Tổng kết & Sáng tạo',
+      summary: 'Chốt từ khóa bài học và liên hệ ứng dụng thực tế sinh động.',
       cards: [
         {
           id: 'c-5-1',
           missionId: 5,
           code: 'NV5-T01',
-          title: 'Viết thông điệp tổng kết 5 dòng',
-          description: 'Chốt 3 từ khóa cốt lõi và 1 ứng dụng thực tế liên quan đến bài học.',
-          durationMinutes: 8,
-        },
-        {
-          id: 'c-5-2',
-          missionId: 5,
-          code: 'NV5-T02',
-          title: 'Thử thách mở rộng liên môn',
-          description: 'Đề xuất một tình huống mới áp dụng kiến thức vừa học vào đời sống.',
+          title: 'Thông điệp 60 giây & ứng dụng đời sống',
+          description: 'Tóm tắt 3 từ khóa vàng của bài học và nêu 1 ví dụ thực tiễn.',
           durationMinutes: 10,
         },
       ],
     },
   ];
 
-  const rosters: Record<ClassId, Array<{ name: string; to: number; groupNumber: GroupNumber; seed: SeedLevel; note?: string }>> = {
+  // 4 Tổ x 2 Nhóm = 8 Nhóm cho lớp 9/23 (mỗi tổ 4 HS ví dụ)
+  const rosters: Record<
+    string,
+    Array<{ name: string; birthDate: string; to: number; groupNumber: GroupNumber; isLeader: boolean; score: number }>
+  > = {
     '9/23': [
-      { name: 'Nguyễn Minh Anh', to: 1, groupNumber: 1, seed: 1, note: 'Nhóm trưởng' },
-      { name: 'Trần Hoàng Bảo', to: 1, groupNumber: 1, seed: 3 },
-      { name: 'Lê Thảo Chi', to: 1, groupNumber: 2, seed: 2 },
-      { name: 'Phạm Quốc Dũng', to: 1, groupNumber: 2, seed: 4 },
-      { name: 'Hoàng Gia Hân', to: 2, groupNumber: 3, seed: 1, note: 'Thư ký' },
-      { name: 'Vũ Đức Khang', to: 2, groupNumber: 3, seed: 5 },
-      { name: 'Đặng Khánh Linh', to: 2, groupNumber: 4, seed: 2 },
-      { name: 'Bùi Nhật Minh', to: 2, groupNumber: 4, seed: 3 },
-      { name: 'Ngô Phương Nghi', to: 3, groupNumber: 5, seed: 1 },
-      { name: 'Đỗ Tuấn Phong', to: 3, groupNumber: 5, seed: 4 },
-      { name: 'Dương Ngọc Quỳnh', to: 3, groupNumber: 1, seed: 2 },
-      { name: 'Phan Thanh Sơn', to: 3, groupNumber: 2, seed: 5 },
+      { name: 'Nguyễn Minh Anh', birthDate: '12/03/2012', to: 1, groupNumber: 1, isLeader: true, score: 9 },
+      { name: 'Trần Hoàng Bảo', birthDate: '25/07/2012', to: 1, groupNumber: 1, isLeader: false, score: 6 },
+      { name: 'Lê Thảo Chi', birthDate: '08/11/2012', to: 1, groupNumber: 2, isLeader: true, score: 8 },
+      { name: 'Phạm Quốc Dũng', birthDate: '19/01/2012', to: 1, groupNumber: 2, isLeader: false, score: 7 },
+      { name: 'Hoàng Gia Hân', birthDate: '04/05/2012', to: 2, groupNumber: 3, isLeader: true, score: 9 },
+      { name: 'Vũ Đức Khang', birthDate: '14/09/2012', to: 2, groupNumber: 3, isLeader: false, score: 5 },
+      { name: 'Đặng Khánh Linh', birthDate: '22/06/2012', to: 2, groupNumber: 4, isLeader: true, score: 8 },
+      { name: 'Bùi Nhật Minh', birthDate: '30/10/2012', to: 2, groupNumber: 4, isLeader: false, score: 6 },
+      { name: 'Ngô Phương Nghi', birthDate: '17/02/2012', to: 3, groupNumber: 5, isLeader: true, score: 10 },
+      { name: 'Đỗ Tuấn Phong', birthDate: '09/08/2012', to: 3, groupNumber: 5, isLeader: false, score: 5 },
+      { name: 'Dương Ngọc Quỳnh', birthDate: '27/12/2012', to: 3, groupNumber: 6, isLeader: true, score: 8 },
+      { name: 'Phan Thanh Sơn', birthDate: '11/04/2012', to: 3, groupNumber: 6, isLeader: false, score: 7 },
+      { name: 'Võ Hải Đăng', birthDate: '03/09/2012', to: 4, groupNumber: 7, isLeader: true, score: 9 },
+      { name: 'Nguyễn Ngọc Hà', birthDate: '15/11/2012', to: 4, groupNumber: 7, isLeader: false, score: 6 },
+      { name: 'Trịnh Gia Huy', birthDate: '21/05/2012', to: 4, groupNumber: 8, isLeader: true, score: 8 },
+      { name: 'Lý Bảo Ngọc', birthDate: '06/07/2012', to: 4, groupNumber: 8, isLeader: false, score: 7 },
     ],
     '9/26': [
-      { name: 'Võ Hải Đăng', to: 1, groupNumber: 1, seed: 1, note: 'Nhóm trưởng' },
-      { name: 'Nguyễn Ngọc Hà', to: 1, groupNumber: 1, seed: 3 },
-      { name: 'Trịnh Gia Huy', to: 1, groupNumber: 2, seed: 2 },
-      { name: 'Lý Bảo Ngọc', to: 1, groupNumber: 2, seed: 4 },
-      { name: 'Mai Anh Quân', to: 2, groupNumber: 3, seed: 1 },
-      { name: 'Tạ Minh Tâm', to: 2, groupNumber: 3, seed: 3 },
-      { name: 'Hồ Thảo Vy', to: 2, groupNumber: 4, seed: 2 },
-      { name: 'Chu Quang Vinh', to: 2, groupNumber: 4, seed: 5 },
-      { name: 'Đinh Lan Anh', to: 3, groupNumber: 5, seed: 2 },
-      { name: 'Kiều Tiến Đạt', to: 3, groupNumber: 5, seed: 4 },
+      { name: 'Mai Anh Quân', birthDate: '18/03/2012', to: 1, groupNumber: 1, isLeader: true, score: 9 },
+      { name: 'Tạ Minh Tâm', birthDate: '02/10/2012', to: 1, groupNumber: 1, isLeader: false, score: 6 },
+      { name: 'Hồ Thảo Vy', birthDate: '14/06/2012', to: 1, groupNumber: 2, isLeader: true, score: 8 },
+      { name: 'Chu Quang Vinh', birthDate: '29/01/2012', to: 1, groupNumber: 2, isLeader: false, score: 7 },
+      { name: 'Đinh Lan Anh', birthDate: '07/08/2012', to: 2, groupNumber: 3, isLeader: true, score: 9 },
+      { name: 'Kiều Tiến Đạt', birthDate: '20/12/2012', to: 2, groupNumber: 4, isLeader: true, score: 8 },
+      { name: 'Lương Khánh An', birthDate: '10/04/2012', to: 3, groupNumber: 5, isLeader: true, score: 8 },
+      { name: 'Nguyễn Hữu Bình', birthDate: '23/09/2012', to: 3, groupNumber: 6, isLeader: true, score: 7 },
+      { name: 'Phạm Thùy Dương', birthDate: '16/05/2012', to: 4, groupNumber: 7, isLeader: true, score: 9 },
+      { name: 'Trần Văn Hiếu', birthDate: '05/11/2012', to: 4, groupNumber: 8, isLeader: true, score: 7 },
     ],
     '9/28': [
-      { name: 'Lương Khánh An', to: 1, groupNumber: 1, seed: 1, note: 'Nhóm trưởng' },
-      { name: 'Nguyễn Hữu Bình', to: 1, groupNumber: 1, seed: 4 },
-      { name: 'Phạm Thùy Dương', to: 1, groupNumber: 2, seed: 2 },
-      { name: 'Trần Văn Hiếu', to: 1, groupNumber: 2, seed: 3 },
-      { name: 'Đoàn Bảo Khánh', to: 2, groupNumber: 3, seed: 1 },
-      { name: 'Nguyễn Yến Nhi', to: 2, groupNumber: 3, seed: 5 },
-      { name: 'Vương Đình Phúc', to: 2, groupNumber: 4, seed: 2 },
-      { name: 'Lê Bảo Trâm', to: 2, groupNumber: 4, seed: 3 },
-      { name: 'Nguyễn Anh Tuấn', to: 3, groupNumber: 5, seed: 1 },
-      { name: 'Trần Minh Uyên', to: 3, groupNumber: 5, seed: 4 },
+      { name: 'Đoàn Bảo Khánh', birthDate: '13/02/2012', to: 1, groupNumber: 1, isLeader: true, score: 9 },
+      { name: 'Nguyễn Yến Nhi', birthDate: '28/07/2012', to: 1, groupNumber: 2, isLeader: true, score: 8 },
+      { name: 'Vương Đình Phúc', birthDate: '09/09/2012', to: 2, groupNumber: 3, isLeader: true, score: 8 },
+      { name: 'Lê Bảo Trâm', birthDate: '19/04/2012', to: 2, groupNumber: 4, isLeader: true, score: 7 },
+      { name: 'Nguyễn Anh Tuấn', birthDate: '01/12/2012', to: 3, groupNumber: 5, isLeader: true, score: 9 },
+      { name: 'Trần Minh Uyên', birthDate: '24/08/2012', to: 3, groupNumber: 6, isLeader: true, score: 8 },
+      { name: 'Hà Minh Khôi', birthDate: '17/05/2012', to: 4, groupNumber: 7, isLeader: true, score: 8 },
+      { name: 'Bùi Thanh Trúc', birthDate: '06/03/2012', to: 4, groupNumber: 8, isLeader: true, score: 7 },
     ],
   };
 
   const students: Student[] = [];
-  (Object.keys(rosters) as ClassId[]).forEach((classId) => {
+  Object.keys(rosters).forEach((classId) => {
     const cleanCode = classId.replace('/', '');
     rosters[classId].forEach((entry, idx) => {
       students.push({
         id: `stu-${cleanCode}-${idx + 1}`,
         studentCode: `${cleanCode}-${String(idx + 1).padStart(2, '0')}`,
         name: entry.name,
+        birthDate: entry.birthDate,
         classId,
         to: entry.to,
         groupNumber: entry.groupNumber,
-        seed: entry.seed,
-        note: entry.note || '',
+        isLeader: entry.isLeader,
+        score: entry.score,
+        note: '',
       });
     });
   });
 
-  const classes: ClassId[] = ['9/23', '9/26', '9/28'];
-  const assignments: DailyAssignmentRecord[] = classes.map((classId) => ({
-    id: `${classId}_${today}`,
-    classId,
+  const assignments: DailyAssignmentRecord[] = classes.map((cls) => ({
+    id: `${cls.id}_${today}`,
+    classId: cls.id,
     date: today,
-    lessonTopic: `Chủ đề bài học ngày ${today} — Lớp ${classId}`,
+    lessonTopic: `Buổi học ngày ${today} — Lớp ${cls.name}`,
     groups: {
-      1: {
-        groupNumber: 1,
-        cardIds: ['c-1-1', 'c-2-1'],
-        homework: 'Hoàn thiện phiếu tổng hợp số liệu và chuẩn bị 2 ví dụ thực tế.',
-        teacherNote: 'Chú ý phân công 1 bạn ghi chép và 1 bạn trình bày.',
-      },
-      2: {
-        groupNumber: 2,
-        cardIds: ['c-1-2', 'c-2-2', 'c-4-1'],
-        homework: 'Hoàn thành 3 bài tập vận dụng trong sách bài tập.',
-        teacherNote: 'Nhóm nhận 3 thẻ, ưu tiên thẻ NV1-T02 trước.',
-      },
-      3: {
-        groupNumber: 3,
-        cardIds: ['c-1-3', 'c-3-1'],
-        homework: 'Vẽ lại sơ đồ quy trình thực hành vào vở nhóm.',
-        teacherNote: 'Thẻ NV1-T02 bản sao dùng song song với nhóm 2.',
-      },
-      4: {
-        groupNumber: 4,
-        cardIds: ['c-2-3', 'c-3-2', 'c-4-2'],
-        homework: 'Tóm tắt 3 lỗi sai thường gặp và cách khắc phục.',
-        teacherNote: '',
-      },
-      5: {
-        groupNumber: 5,
-        cardIds: ['c-4-3', 'c-5-1', 'c-5-2'],
-        homework: 'Viết đoạn văn ngắn 100 chữ về ứng dụng liên môn.',
-        teacherNote: 'Chuẩn bị câu hỏi phản biện cho nhóm 1 & nhóm 4.',
-      },
+      1: { groupNumber: 1, cardIds: ['c-1-1'], homework: 'Hoàn thiện phiếu khám phá và chuẩn bị 2 ví dụ.', teacherNote: '' },
+      2: { groupNumber: 2, cardIds: ['c-1-2'], homework: 'Tổng hợp số liệu đo đạc của nhóm.', teacherNote: 'Trùng chủ đề Nhiệm vụ 1 với Nhóm 1' },
+      3: { groupNumber: 3, cardIds: ['c-2-1'], homework: 'Hoàn thiện sơ đồ nhánh vào vở.', teacherNote: '' },
+      4: { groupNumber: 4, cardIds: ['c-2-2'], homework: 'Giải 2 bài tập tình huống mở rộng.', teacherNote: 'Trùng chủ đề Nhiệm vụ 2 với Nhóm 3' },
+      5: { groupNumber: 5, cardIds: ['c-3-1'], homework: 'Chụp ảnh kết quả 3 thử thách nộp lại.', teacherNote: '' },
+      6: { groupNumber: 6, cardIds: ['c-3-2'], homework: 'Ghi chú 2 lỗi sai thường gặp.', teacherNote: 'Trùng chủ đề Nhiệm vụ 3 với Nhóm 5' },
+      7: { groupNumber: 7, cardIds: ['c-4-1'], homework: 'Chuẩn bị câu hỏi phản biện cho tiết sau.', teacherNote: '' },
+      8: { groupNumber: 8, cardIds: ['c-5-1'], homework: 'Viết thông điệp tổng kết 5 dòng.', teacherNote: '' },
     },
     updatedAt: new Date().toISOString(),
   }));
 
   const grades: DailyGradeRecord[] = [
     {
-      id: `${'9/23'}_${yesterday}`,
+      id: `9/23_${yesterday}`,
       classId: '9/23',
       date: yesterday,
-      lessonTopic: `Bài học ngày ${yesterday} — Lớp 9/23`,
+      lessonTopic: `Buổi học ngày ${yesterday} — Lớp 9/23`,
       publishedToStudents: true,
       updatedAt: new Date().toISOString(),
       entries: [
-        { groupNumber: 3, qualityOrder: 1, score: 7.0, completedCardsCount: 2, feedback: 'Hoàn thành cơ bản, cần cải thiện phần trình bày.' },
-        { groupNumber: 5, qualityOrder: 2, score: 7.5, completedCardsCount: 2, feedback: 'Phản biện khá tốt nhưng thiếu 1 ý tổng hợp.' },
-        { groupNumber: 2, qualityOrder: 3, score: 8.5, completedCardsCount: 3, feedback: 'Số liệu chính xác, làm việc nhóm nhịp nhàng.' },
-        { groupNumber: 4, qualityOrder: 4, score: 9.0, completedCardsCount: 3, feedback: 'Tìm lỗi sai rất sắc bén.' },
-        { groupNumber: 1, qualityOrder: 5, score: 9.5, completedCardsCount: 2, feedback: 'Xuất sắc nhất buổi học, hoàn thành vượt yêu cầu.' },
+        { groupNumber: 1, baseScore: 9.0, bonusPoints: 1.0, penaltyPoints: 0, finalScore: 10.0, feedback: 'Hoàn thành nhanh, trình bày rõ ràng.' },
+        { groupNumber: 2, baseScore: 8.5, bonusPoints: 0.5, penaltyPoints: 0, finalScore: 9.0, feedback: 'Tích cực thảo luận.' },
+        { groupNumber: 3, baseScore: 8.0, bonusPoints: 1.0, penaltyPoints: 0.5, finalScore: 8.5, feedback: 'Giải tốt nhưng đầu giờ hơi ồn.' },
+        { groupNumber: 4, baseScore: 8.5, bonusPoints: 0, penaltyPoints: 0, finalScore: 8.5, feedback: 'Hoàn thành đúng tiến độ.' },
+        { groupNumber: 5, baseScore: 9.0, bonusPoints: 0.5, penaltyPoints: 0, finalScore: 9.5, feedback: 'Nhóm trưởng điều phối xuất sắc.' },
+        { groupNumber: 6, baseScore: 7.5, bonusPoints: 0, penaltyPoints: 0.5, finalScore: 7.0, feedback: 'Cần tập trung hơn khi làm bài.' },
+        { groupNumber: 7, baseScore: 8.0, bonusPoints: 1.0, penaltyPoints: 0, finalScore: 9.0, feedback: 'Đặt câu hỏi phản biện hay.' },
+        { groupNumber: 8, baseScore: 8.5, bonusPoints: 0.5, penaltyPoints: 0, finalScore: 9.0, feedback: 'Tổng kết sáng tạo.' },
       ],
     },
   ];
 
-  return { students, coreMissions, assignments, grades };
+  return {
+    classes,
+    students,
+    coreMissions,
+    allocationConfig: createDefaultAllocationConfig(),
+    assignments,
+    grades,
+  };
 }

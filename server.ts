@@ -1,7 +1,9 @@
+import 'dotenv/config';
 import express, { type NextFunction, type Request, type Response } from 'express';
 import path from 'node:path';
 import crypto from 'node:crypto';
 import fs from 'node:fs';
+import { GoogleGenAI, Type } from '@google/genai';
 import {
   authenticateTeacher,
   createTeacherAccount,
@@ -11,13 +13,13 @@ import {
   saveDb,
 } from './server/store.ts';
 import type {
-  ClassId,
+  ClassroomInfo,
   DailyAssignmentRecord,
   DailyGradeRecord,
   GroupNumber,
+  MissionAllocationConfig,
   MissionCard,
   PublicStudentMissionResponse,
-  SeedLevel,
   Student,
   TeacherUser,
 } from './shared/types.ts';
@@ -47,25 +49,21 @@ function requireTeacherAuth(req: AuthenticatedRequest, res: Response, next: Next
   next();
 }
 
-function normalizeClassId(raw: string | undefined): ClassId {
-  if (!raw) return '9/23';
-  const cleaned = raw.replace('-', '/').trim();
-  if (cleaned === '9/23' || cleaned === '9/26' || cleaned === '9/28') {
-    return cleaned;
-  }
-  return '9/23';
+function normalizeClassId(raw: string | undefined): string {
+  const trimmed = (raw || '').trim();
+  return trimmed || '9/23';
 }
 
 function normalizeGroupNumber(raw: string | number | undefined): GroupNumber {
   const n = Number(raw);
-  if (n >= 1 && n <= 5) return n as GroupNumber;
+  if (n >= 1 && n <= 8) return Math.round(n) as GroupNumber;
   return 1;
 }
 
-function normalizeSeed(raw: unknown): SeedLevel {
+function normalizeScore(raw: unknown): number {
   const n = Number(raw);
-  if (n >= 1 && n <= 5) return Math.round(n) as SeedLevel;
-  return 3;
+  if (!Number.isNaN(n) && n >= 1 && n <= 10) return Number(n.toFixed(1));
+  return 7;
 }
 
 function getTodayDateString(): string {
@@ -78,7 +76,7 @@ function getTodayDateString(): string {
 
 async function startServer() {
   const app = express();
-  app.use(express.json({ limit: '5mb' }));
+  app.use(express.json({ limit: '8mb' }));
 
   app.get('/api/health', (_req, res) => {
     res.json({ ok: true });
@@ -136,15 +134,15 @@ async function startServer() {
 
   // Public Student QR Mission Endpoint
   app.get('/api/public/mission', (req, res) => {
-    const classId = normalizeClassId(String(req.query.class || '9/23'));
-    const groupNumber = normalizeGroupNumber(req.query.group as string | undefined);
-    const date = typeof req.query.date === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(req.query.date)
-      ? req.query.date
-      : getTodayDateString();
-
     const db = loadDb();
+    const rawClass = String(req.query.class || db.classes[0]?.id || '9/23');
+    const classId = normalizeClassId(rawClass);
+    const groupNumber = normalizeGroupNumber(req.query.group as string | undefined);
+    const date =
+      typeof req.query.date === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(req.query.date)
+        ? req.query.date
+        : getTodayDateString();
 
-    // Find assignment for exact date, or fallback to latest assignment for that class if none on exact date
     const exactAssignment = db.assignments.find((a) => a.classId === classId && a.date === date);
     const fallbackAssignment = !exactAssignment
       ? [...db.assignments]
@@ -162,53 +160,193 @@ async function startServer() {
 
     const students = db.students
       .filter((s) => s.classId === classId && s.groupNumber === groupNumber)
-      .map(({ id, studentCode, name, to, groupNumber: gn, note }) => ({
+      .map(({ id, studentCode, name, birthDate, to, groupNumber: gn, isLeader, note }) => ({
         id,
         studentCode,
         name,
+        birthDate,
         to,
         groupNumber: gn,
+        isLeader,
         note,
       }));
 
+    const targetDate = exactAssignment ? date : activeAssignment?.date || date;
     const gradeRecord = db.grades.find(
-      (g) => g.classId === classId && g.date === (exactAssignment ? date : activeAssignment?.date || date) && g.publishedToStudents
+      (g) => g.classId === classId && g.date === targetDate && g.publishedToStudents
     );
 
     const publishedGrade = gradeRecord?.entries.find((e) => e.groupNumber === groupNumber) || null;
-    const allGroupRankings = gradeRecord
+    const allGroupScores = gradeRecord
       ? [...gradeRecord.entries]
-          .sort((a, b) => b.qualityOrder - a.qualityOrder)
-          .map((e) => ({ groupNumber: e.groupNumber, qualityOrder: e.qualityOrder, score: e.score }))
+          .sort((a, b) => b.finalScore - a.finalScore)
+          .map((e) => ({
+            groupNumber: e.groupNumber,
+            baseScore: e.baseScore,
+            bonusPoints: e.bonusPoints,
+            penaltyPoints: e.penaltyPoints,
+            finalScore: e.finalScore,
+          }))
       : null;
 
     const payload: PublicStudentMissionResponse = {
       classId,
       groupNumber,
-      date: exactAssignment ? date : activeAssignment?.date || date,
+      date: targetDate,
       lessonTopic: activeAssignment?.lessonTopic || `Buổi học lớp ${classId}`,
       students,
       cards: resolvedCards,
       homework: groupPlan?.homework || 'Chưa có bài tập về nhà cho nhóm hôm nay.',
       teacherNote: groupPlan?.teacherNote || '',
       publishedGrade,
-      allGroupRankings,
+      allGroupScores,
     };
 
     res.json(payload);
+  });
+
+  // Public list of available classes for Student Portal dropdown
+  app.get('/api/public/classes', (_req, res) => {
+    const db = loadDb();
+    res.json({ classes: db.classes });
   });
 
   // Protected Teacher Workspace Endpoints
   app.get('/api/workspace', requireTeacherAuth, (_req, res) => {
     const db = loadDb();
     res.json({
+      classes: db.classes,
       students: db.students,
       coreMissions: db.coreMissions,
+      allocationConfig: db.allocationConfig,
       assignments: db.assignments,
       grades: db.grades,
     });
   });
 
+  // Dynamic Class Management
+  app.post('/api/classes', requireTeacherAuth, (req, res) => {
+    const { name } = req.body as { name?: string };
+    const clean = (name || '').trim();
+    if (!clean) {
+      res.status(400).json({ error: 'Tên lớp không được để trống.' });
+      return;
+    }
+    const db = loadDb();
+    if (db.classes.some((c) => c.name.toLowerCase() === clean.toLowerCase())) {
+      res.status(409).json({ error: `Lớp ${clean} đã tồn tại.` });
+      return;
+    }
+    const created: ClassroomInfo = {
+      id: clean,
+      name: clean,
+      createdAt: getTodayDateString(),
+    };
+    db.classes.push(created);
+    saveDb(db);
+    res.status(201).json(created);
+  });
+
+  app.delete('/api/classes/:classId', requireTeacherAuth, (req, res) => {
+    const classId = decodeURIComponent(String(req.params.classId));
+    const db = loadDb();
+    if (db.classes.length <= 1) {
+      res.status(400).json({ error: 'Hệ thống cần giữ lại ít nhất 1 lớp học.' });
+      return;
+    }
+    db.classes = db.classes.filter((c) => c.id !== classId);
+    db.students = db.students.filter((s) => s.classId !== classId);
+    db.assignments = db.assignments.filter((a) => a.classId !== classId);
+    db.grades = db.grades.filter((g) => g.classId !== classId);
+    saveDb(db);
+    res.json({ ok: true });
+  });
+
+  // AI-Powered Excel Roster Parser via Gemini
+  app.post('/api/ai/parse-roster', requireTeacherAuth, async (req, res) => {
+    const { rawRows, defaultClassId, sheetName } = req.body as {
+      rawRows?: unknown[];
+      defaultClassId?: string;
+      sheetName?: string;
+    };
+
+    if (!Array.isArray(rawRows) || rawRows.length === 0) {
+      res.status(400).json({ error: 'Không có dữ liệu bảng tính để AI phân tích.' });
+      return;
+    }
+
+    const apiKey = process.env.GEMINI_API_KEY;
+    if (!apiKey) {
+      res.status(503).json({
+        error: 'Chưa cấu hình GEMINI_API_KEY trên máy chủ. Bạn vẫn có thể dùng chế độ đọc Excel chuẩn.',
+      });
+      return;
+    }
+
+    try {
+      const ai = new GoogleGenAI({
+        apiKey,
+        httpOptions: {
+          headers: {
+            'User-Agent': 'aistudio-build',
+          },
+        },
+      });
+
+      const truncatedRows = rawRows.slice(0, 120);
+      const prompt = `Bạn là trợ lý giáo viên chủ nhiệm Việt Nam. Hãy đọc dữ liệu thô trích xuất từ file Excel danh sách học sinh dưới đây (tên sheet: "${sheetName || 'Sheet1'}", lớp mặc định: "${defaultClassId || '9/23'}").
+Hãy chuẩn hóa từng học sinh thành JSON theo đúng schema:
+- studentCode: Mã học sinh (nếu không có thì tự sinh theo dạng "<TenLop>-01", "<TenLop>-02"...).
+- name: Họ và tên đầy đủ (nếu file tách riêng cột "Họ" / "Họ lót" và "Tên" thì ghép lại thành họ tên đầy đủ).
+- birthDate: Ngày tháng năm sinh định dạng DD/MM/YYYY (ví dụ "15/08/2012", nếu Excel trả số serial hoặc YYYY-MM-DD thì chuyển về DD/MM/YYYY, nếu trống để "").
+- classId: Tên lớp học (nếu file có cột Lớp thì lấy giá trị đó, nếu không dùng "${defaultClassId || '9/23'}").
+- to: Số Tổ (từ 1 đến 4, mặc định 1).
+- groupNumber: Số Nhóm (từ 1 đến 8; nếu trống thì suy từ Tổ hoặc đánh số tuần tự 1..8).
+- isLeader: true nếu học sinh là Nhóm trưởng / Tổ trưởng / NT / có dấu tick (x, ✓, true, 1, "Có"), ngược lại false.
+- score: Điểm đánh giá năng lực từ 1 đến 10 (mặc định 7 nếu không có trong file).
+- note: Ghi chú thêm nếu có (hoặc "").
+
+Bỏ qua các dòng tiêu đề trường/sở, dòng trống hoặc dòng tổng cộng không phải học sinh.
+
+Dữ liệu thô từ Excel:
+${JSON.stringify(truncatedRows)}`;
+
+      const response = await ai.models.generateContent({
+        model: 'gemini-4-hydrogen',
+        contents: prompt,
+        config: {
+          responseMimeType: 'application/json',
+          responseSchema: {
+            type: Type.ARRAY,
+            items: {
+              type: Type.OBJECT,
+              properties: {
+                studentCode: { type: Type.STRING },
+                name: { type: Type.STRING },
+                birthDate: { type: Type.STRING },
+                classId: { type: Type.STRING },
+                to: { type: Type.INTEGER },
+                groupNumber: { type: Type.INTEGER },
+                isLeader: { type: Type.BOOLEAN },
+                score: { type: Type.NUMBER },
+                note: { type: Type.STRING },
+              },
+              required: ['name', 'birthDate', 'classId', 'to', 'groupNumber', 'isLeader', 'score'],
+            },
+          },
+        },
+      });
+
+      const parsed = JSON.parse((response.text ?? '[]').trim()) as Array<Partial<Student>>;
+      res.json({ students: parsed });
+    } catch (err) {
+      res.status(500).json({
+        error: err instanceof Error ? err.message : 'AI không thể phân tích file Excel lúc này.',
+      });
+    }
+  });
+
+  // Students CRUD
   app.post('/api/students', requireTeacherAuth, (req, res) => {
     const body = req.body as Partial<Student>;
     if (!body.name || !body.name.trim()) {
@@ -217,6 +355,9 @@ async function startServer() {
     }
     const db = loadDb();
     const classId = normalizeClassId(body.classId);
+    if (!db.classes.some((c) => c.id === classId)) {
+      db.classes.push({ id: classId, name: classId, createdAt: getTodayDateString() });
+    }
     const cleanCode = classId.replace('/', '');
     const newStudent: Student = {
       id: `stu-${crypto.randomUUID().slice(0, 8)}`,
@@ -224,10 +365,12 @@ async function startServer() {
         body.studentCode?.trim() ||
         `${cleanCode}-${String(db.students.filter((s) => s.classId === classId).length + 1).padStart(2, '0')}`,
       name: body.name.trim(),
+      birthDate: (body.birthDate || '').trim(),
       classId,
-      to: Math.max(1, Number(body.to) || 1),
+      to: Math.min(4, Math.max(1, Number(body.to) || 1)),
       groupNumber: normalizeGroupNumber(body.groupNumber),
-      seed: normalizeSeed(body.seed),
+      isLeader: Boolean(body.isLeader),
+      score: normalizeScore(body.score),
       note: body.note?.trim() || '',
     };
     db.students.push(newStudent);
@@ -249,10 +392,12 @@ async function startServer() {
       ...current,
       studentCode: body.studentCode !== undefined ? body.studentCode.trim() : current.studentCode,
       name: body.name !== undefined ? body.name.trim() : current.name,
+      birthDate: body.birthDate !== undefined ? body.birthDate.trim() : current.birthDate,
       classId: body.classId !== undefined ? normalizeClassId(body.classId) : current.classId,
-      to: body.to !== undefined ? Math.max(1, Number(body.to) || 1) : current.to,
+      to: body.to !== undefined ? Math.min(4, Math.max(1, Number(body.to) || 1)) : current.to,
       groupNumber: body.groupNumber !== undefined ? normalizeGroupNumber(body.groupNumber) : current.groupNumber,
-      seed: body.seed !== undefined ? normalizeSeed(body.seed) : current.seed,
+      isLeader: body.isLeader !== undefined ? Boolean(body.isLeader) : current.isLeader,
+      score: body.score !== undefined ? normalizeScore(body.score) : current.score,
       note: body.note !== undefined ? body.note.trim() : current.note,
     };
     db.students[idx] = updated;
@@ -271,7 +416,7 @@ async function startServer() {
   app.post('/api/students/bulk', requireTeacherAuth, (req, res) => {
     const { mode, classId: rawClassId, students: incoming } = req.body as {
       mode: 'import-merge' | 'import-replace' | 'patch';
-      classId?: ClassId;
+      classId?: string;
       students: Array<Partial<Student> & { id?: string }>;
     };
     if (!Array.isArray(incoming)) {
@@ -292,21 +437,26 @@ async function startServer() {
         if (idx !== -1) {
           db.students[idx] = {
             ...db.students[idx],
-            ...(patchItem.to !== undefined ? { to: Math.max(1, Number(patchItem.to) || 1) } : {}),
+            ...(patchItem.to !== undefined ? { to: Math.min(4, Math.max(1, Number(patchItem.to) || 1)) } : {}),
             ...(patchItem.groupNumber !== undefined ? { groupNumber: normalizeGroupNumber(patchItem.groupNumber) } : {}),
-            ...(patchItem.seed !== undefined ? { seed: normalizeSeed(patchItem.seed) } : {}),
+            ...(patchItem.isLeader !== undefined ? { isLeader: Boolean(patchItem.isLeader) } : {}),
+            ...(patchItem.score !== undefined ? { score: normalizeScore(patchItem.score) } : {}),
+            ...(patchItem.birthDate !== undefined ? { birthDate: patchItem.birthDate } : {}),
             ...(patchItem.note !== undefined ? { note: patchItem.note } : {}),
           };
         }
       }
       saveDb(db);
-      res.json({ students: db.students });
+      res.json({ students: db.students, classes: db.classes });
       return;
     }
 
     for (const item of incoming) {
       if (!item.name || !item.name.trim()) continue;
       const cls = normalizeClassId(item.classId || targetClass);
+      if (!db.classes.some((c) => c.id === cls)) {
+        db.classes.push({ id: cls, name: cls, createdAt: getTodayDateString() });
+      }
       const cleanCode = cls.replace('/', '');
       const existingByCode = item.studentCode
         ? db.students.find((s) => s.classId === cls && s.studentCode.toLowerCase() === item.studentCode!.trim().toLowerCase())
@@ -314,9 +464,11 @@ async function startServer() {
 
       if (existingByCode && mode === 'import-merge') {
         existingByCode.name = item.name.trim();
-        existingByCode.to = Math.max(1, Number(item.to) || existingByCode.to);
+        existingByCode.birthDate = item.birthDate !== undefined ? item.birthDate.trim() : existingByCode.birthDate;
+        existingByCode.to = Math.min(4, Math.max(1, Number(item.to) || existingByCode.to));
         existingByCode.groupNumber = item.groupNumber ? normalizeGroupNumber(item.groupNumber) : existingByCode.groupNumber;
-        existingByCode.seed = item.seed ? normalizeSeed(item.seed) : existingByCode.seed;
+        existingByCode.isLeader = item.isLeader !== undefined ? Boolean(item.isLeader) : existingByCode.isLeader;
+        existingByCode.score = item.score !== undefined ? normalizeScore(item.score) : existingByCode.score;
         existingByCode.note = item.note !== undefined ? item.note.trim() : existingByCode.note;
       } else {
         db.students.push({
@@ -325,17 +477,19 @@ async function startServer() {
             item.studentCode?.trim() ||
             `${cleanCode}-${String(db.students.filter((s) => s.classId === cls).length + 1).padStart(2, '0')}`,
           name: item.name.trim(),
+          birthDate: (item.birthDate || '').trim(),
           classId: cls,
-          to: Math.max(1, Number(item.to) || 1),
+          to: Math.min(4, Math.max(1, Number(item.to) || 1)),
           groupNumber: normalizeGroupNumber(item.groupNumber),
-          seed: normalizeSeed(item.seed),
+          isLeader: Boolean(item.isLeader),
+          score: normalizeScore(item.score),
           note: item.note?.trim() || '',
         });
       }
     }
 
     saveDb(db);
-    res.json({ students: db.students });
+    res.json({ students: db.students, classes: db.classes });
   });
 
   // Core Missions & Cards Endpoints
@@ -388,7 +542,7 @@ async function startServer() {
       mission.cards = mission.cards.filter((c) => c.id !== cardId);
     }
     for (const assignment of db.assignments) {
-      ([1, 2, 3, 4, 5] as GroupNumber[]).forEach((g) => {
+      ([1, 2, 3, 4, 5, 6, 7, 8] as GroupNumber[]).forEach((g) => {
         if (assignment.groups[g]) {
           assignment.groups[g].cardIds = assignment.groups[g].cardIds.filter((id) => id !== cardId);
         }
@@ -396,6 +550,15 @@ async function startServer() {
     }
     saveDb(db);
     res.json({ ok: true });
+  });
+
+  // Mission Allocation Config
+  app.put('/api/allocation-config', requireTeacherAuth, (req, res) => {
+    const payload = req.body as MissionAllocationConfig;
+    const db = loadDb();
+    db.allocationConfig = payload;
+    saveDb(db);
+    res.json(db.allocationConfig);
   });
 
   // Daily Assignment Endpoint
@@ -441,7 +604,10 @@ async function startServer() {
       classId,
       date: payload.date,
       lessonTopic: payload.lessonTopic?.trim() || `Buổi học ngày ${payload.date}`,
-      entries: payload.entries,
+      entries: payload.entries.map((e) => ({
+        ...e,
+        finalScore: Number((e.baseScore - e.penaltyPoints + e.bonusPoints).toFixed(2)),
+      })),
       publishedToStudents: Boolean(payload.publishedToStudents),
       updatedAt: new Date().toISOString(),
     };

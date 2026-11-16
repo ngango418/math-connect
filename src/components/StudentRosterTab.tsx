@@ -1,48 +1,55 @@
 import { useRef, useState, type FormEvent } from 'react';
-import { Download, Edit3, FileSpreadsheet, Plus, Search, Trash2, Upload, X } from 'lucide-react';
 import {
-  GROUP_NUMBERS,
-  type ClassId,
-  type GroupNumber,
-  type SeedLevel,
-  type Student,
-} from '../../shared/types.ts';
-import { bulkStudentsAction, createStudent, deleteStudent, updateStudent } from '../lib/api.ts';
+  Crown,
+  Download,
+  Edit3,
+  FileSpreadsheet,
+  Plus,
+  Search,
+  Sparkles,
+  Trash2,
+  Upload,
+  X,
+} from 'lucide-react';
+import { GROUP_NUMBERS, type GroupNumber, type Student } from '../../shared/types.ts';
+import {
+  aiParseExcelRoster,
+  bulkStudentsAction,
+  createStudent,
+  deleteStudent,
+  updateStudent,
+} from '../lib/api.ts';
 import {
   downloadExcelTemplate,
   exportRosterToExcel,
-  parseExcelStudents,
+  extractRawExcelSheet,
+  parseExcelStudentsStandard,
   type ParsedExcelStudentRow,
 } from '../lib/excelUtils.ts';
 
 interface StudentRosterTabProps {
-  classId: ClassId;
+  classId: string;
   students: Student[];
   onRefreshWorkspace: () => Promise<void>;
 }
-
-const SEED_LABELS: Record<SeedLevel, string> = {
-  1: 'Mức 1 · Cao nhất',
-  2: 'Mức 2 · Khá tốt',
-  3: 'Mức 3 · Trung bình',
-  4: 'Mức 4 · Cần kèm',
-  5: 'Mức 5 · Thấp nhất',
-};
 
 export function StudentRosterTab({ classId, students, onRefreshWorkspace }: StudentRosterTabProps) {
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const [search, setSearch] = useState('');
   const [filterTo, setFilterTo] = useState<string>('all');
-  const [filterSeed, setFilterSeed] = useState<string>('all');
+  const [useAiParser, setUseAiParser] = useState<boolean>(true);
+  const [parsingExcel, setParsingExcel] = useState<boolean>(false);
 
   // Add/Edit modal state
   const [modalOpen, setModalOpen] = useState(false);
   const [editingStudent, setEditingStudent] = useState<Student | null>(null);
   const [formCode, setFormCode] = useState('');
   const [formName, setFormName] = useState('');
+  const [formBirthDate, setFormBirthDate] = useState('');
   const [formTo, setFormTo] = useState(1);
   const [formGroup, setFormGroup] = useState<GroupNumber>(1);
-  const [formSeed, setFormSeed] = useState<SeedLevel>(3);
+  const [formIsLeader, setFormIsLeader] = useState(false);
+  const [formScore, setFormScore] = useState(7);
   const [formNote, setFormNote] = useState('');
   const [submitting, setSubmitting] = useState(false);
 
@@ -53,7 +60,7 @@ export function StudentRosterTab({ classId, students, onRefreshWorkspace }: Stud
   const [statusMsg, setStatusMsg] = useState('');
 
   const classStudents = students.filter((s) => s.classId === classId);
-  const distinctTos = Array.from(new Set(classStudents.map((s) => s.to))).sort((a, b) => a - b);
+  const distinctTos = Array.from(new Set([1, 2, 3, 4, ...classStudents.map((s) => s.to)])).sort((a, b) => a - b);
 
   const filtered = classStudents.filter((s) => {
     const matchSearch =
@@ -61,18 +68,19 @@ export function StudentRosterTab({ classId, students, onRefreshWorkspace }: Stud
       s.name.toLowerCase().includes(search.toLowerCase()) ||
       s.studentCode.toLowerCase().includes(search.toLowerCase());
     const matchTo = filterTo === 'all' || String(s.to) === filterTo;
-    const matchSeed = filterSeed === 'all' || String(s.seed) === filterSeed;
-    return matchSearch && matchTo && matchSeed;
+    return matchSearch && matchTo;
   });
 
   const openAddModal = () => {
     setEditingStudent(null);
-    const cleanCode = classId.replace('/', '');
+    const cleanCode = classId.replace(/[^a-zA-Z0-9]/g, '');
     setFormCode(`${cleanCode}-${String(classStudents.length + 1).padStart(2, '0')}`);
     setFormName('');
+    setFormBirthDate('');
     setFormTo(1);
     setFormGroup(1);
-    setFormSeed(3);
+    setFormIsLeader(false);
+    setFormScore(7);
     setFormNote('');
     setModalOpen(true);
   };
@@ -81,9 +89,11 @@ export function StudentRosterTab({ classId, students, onRefreshWorkspace }: Stud
     setEditingStudent(stu);
     setFormCode(stu.studentCode);
     setFormName(stu.name);
+    setFormBirthDate(stu.birthDate || '');
     setFormTo(stu.to);
     setFormGroup(stu.groupNumber);
-    setFormSeed(stu.seed);
+    setFormIsLeader(Boolean(stu.isLeader));
+    setFormScore(stu.score ?? 7);
     setFormNote(stu.note || '');
     setModalOpen(true);
   };
@@ -97,19 +107,23 @@ export function StudentRosterTab({ classId, students, onRefreshWorkspace }: Stud
         await updateStudent(editingStudent.id, {
           studentCode: formCode.trim(),
           name: formName.trim(),
+          birthDate: formBirthDate.trim(),
           to: formTo,
           groupNumber: formGroup,
-          seed: formSeed,
+          isLeader: formIsLeader,
+          score: Math.min(10, Math.max(1, Number(formScore) || 7)),
           note: formNote.trim(),
         });
       } else {
         await createStudent({
           studentCode: formCode.trim(),
           name: formName.trim(),
+          birthDate: formBirthDate.trim(),
           classId,
           to: formTo,
           groupNumber: formGroup,
-          seed: formSeed,
+          isLeader: formIsLeader,
+          score: Math.min(10, Math.max(1, Number(formScore) || 7)),
           note: formNote.trim(),
         });
       }
@@ -125,8 +139,14 @@ export function StudentRosterTab({ classId, students, onRefreshWorkspace }: Stud
     await onRefreshWorkspace();
   };
 
-  const handleQuickSeedChange = async (stu: Student, seed: SeedLevel) => {
-    await updateStudent(stu.id, { seed });
+  const handleToggleLeader = async (stu: Student) => {
+    await updateStudent(stu.id, { isLeader: !stu.isLeader });
+    await onRefreshWorkspace();
+  };
+
+  const handleQuickScoreChange = async (stu: Student, rawScore: string) => {
+    const val = Math.min(10, Math.max(1, Number(rawScore) || 1));
+    await updateStudent(stu.id, { score: Number(val.toFixed(1)) });
     await onRefreshWorkspace();
   };
 
@@ -134,12 +154,47 @@ export function StudentRosterTab({ classId, students, onRefreshWorkspace }: Stud
     if (!file) return;
     setImportError('');
     setStatusMsg('');
+    setParsingExcel(true);
     try {
-      const rows = await parseExcelStudents(file, classId);
+      if (useAiParser) {
+        try {
+          const { sheetName, rawRows } = await extractRawExcelSheet(file);
+          const aiStudents = await aiParseExcelRoster(rawRows, classId, sheetName);
+          const formatted: ParsedExcelStudentRow[] = aiStudents
+            .filter((s) => s.name && s.name.trim())
+            .map((s, idx) => ({
+              studentCode:
+                s.studentCode?.trim() ||
+                `${classId.replace(/[^a-zA-Z0-9]/g, '')}-${String(idx + 1).padStart(2, '0')}`,
+              name: s.name!.trim(),
+              birthDate: (s.birthDate || '').trim(),
+              classId: (s.classId || classId).trim(),
+              to: Math.min(4, Math.max(1, Number(s.to) || 1)),
+              groupNumber: Math.min(8, Math.max(1, Number(s.groupNumber) || 1)) as GroupNumber,
+              isLeader: Boolean(s.isLeader),
+              score: Math.min(10, Math.max(1, Number(s.score) || 7)),
+              note: (s.note || '').trim(),
+              warnings: ['AI Gemini đã chuẩn hóa'],
+            }));
+          if (formatted.length > 0) {
+            setImportPreview(formatted);
+            return;
+          }
+        } catch (aiErr) {
+          // Fall back smoothly to deterministic Excel parser if AI endpoint is unavailable on static host
+          const fallbackMsg = aiErr instanceof Error ? aiErr.message : '';
+          if (fallbackMsg && !fallbackMsg.includes('STATIC_HOST_FALLBACK')) {
+            setStatusMsg(`AI đang tạm bận (${fallbackMsg}) — đã tự động chuyển sang bộ đọc Excel chuẩn.`);
+          }
+        }
+      }
+
+      const rows = await parseExcelStudentsStandard(file, classId);
       setImportPreview(rows);
     } catch (err) {
       setImportError(err instanceof Error ? err.message : 'Không thể đọc file Excel.');
     } finally {
+      setParsingExcel(false);
       if (fileInputRef.current) fileInputRef.current.value = '';
     }
   };
@@ -154,14 +209,16 @@ export function StudentRosterTab({ classId, students, onRefreshWorkspace }: Stud
         students: importPreview.map((r) => ({
           studentCode: r.studentCode,
           name: r.name,
+          birthDate: r.birthDate,
           classId: r.classId,
           to: r.to,
-          seed: r.seed,
           groupNumber: r.groupNumber,
+          isLeader: r.isLeader,
+          score: r.score,
           note: r.note,
         })),
       });
-      setStatusMsg(`Đã nhập thành công ${importPreview.length} học sinh từ file Excel.`);
+      setStatusMsg(`Đã nhập thành công ${importPreview.length} học sinh từ file Excel vào Firebase/Hệ thống.`);
       setImportPreview(null);
       await onRefreshWorkspace();
     } catch (err) {
@@ -174,14 +231,14 @@ export function StudentRosterTab({ classId, students, onRefreshWorkspace }: Stud
   return (
     <div className="space-y-6">
       {/* Toolbar */}
-      <div className="bg-white border border-slate-200 rounded-xl p-5">
+      <div className="bg-white border border-slate-200 rounded-2xl p-5">
         <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
           <div>
             <h2 className="text-lg font-bold text-slate-900">
               Danh sách Học sinh &amp; Nhập Excel — Lớp {classId}
             </h2>
             <p className="text-xs text-slate-500 mt-0.5">
-              Tổng số <span className="font-mono font-semibold text-slate-800">{classStudents.length}</span> học sinh · Trường Hạt giống năng lực từ 1 (Cao nhất) đến 5 (Thấp nhất).
+              Tổng số <span className="font-mono font-bold text-slate-800">{classStudents.length}</span> học sinh · Có thể tick chọn <strong>Nhóm trưởng</strong> trực tiếp hoặc dùng <strong>AI đọc file Excel</strong> bất kỳ định dạng nào.
             </p>
           </div>
 
@@ -189,10 +246,10 @@ export function StudentRosterTab({ classId, students, onRefreshWorkspace }: Stud
             <button
               type="button"
               onClick={() => downloadExcelTemplate(classId)}
-              className="inline-flex items-center gap-1.5 px-3 py-2 text-xs sm:text-sm font-medium text-slate-700 bg-slate-100 hover:bg-slate-200 rounded-lg transition-colors whitespace-nowrap"
+              className="inline-flex items-center gap-1.5 px-3 py-2 text-xs sm:text-sm font-medium text-slate-700 bg-slate-100 hover:bg-slate-200 rounded-xl transition-colors whitespace-nowrap"
             >
               <FileSpreadsheet className="w-4 h-4" />
-              Tải file Excel mẫu
+              Tải mẫu Excel
             </button>
 
             <input
@@ -204,17 +261,18 @@ export function StudentRosterTab({ classId, students, onRefreshWorkspace }: Stud
             />
             <button
               type="button"
+              disabled={parsingExcel}
               onClick={() => fileInputRef.current?.click()}
-              className="inline-flex items-center gap-1.5 px-3 py-2 text-xs sm:text-sm font-medium text-blue-700 bg-blue-50 hover:bg-blue-100 rounded-lg transition-colors whitespace-nowrap"
+              className="inline-flex items-center gap-1.5 px-3.5 py-2 text-xs sm:text-sm font-semibold text-violet-700 bg-violet-50 hover:bg-violet-100 border border-violet-200 rounded-xl transition-colors whitespace-nowrap"
             >
-              <Upload className="w-4 h-4" />
-              Nhập từ Excel
+              {useAiParser ? <Sparkles className="w-4 h-4" /> : <Upload className="w-4 h-4" />}
+              {parsingExcel ? 'AI đang đọc Excel...' : 'Tải Excel lên (AI đọc)'}
             </button>
 
             <button
               type="button"
               onClick={() => exportRosterToExcel(classId, classStudents)}
-              className="inline-flex items-center gap-1.5 px-3 py-2 text-xs sm:text-sm font-medium text-slate-700 bg-slate-100 hover:bg-slate-200 rounded-lg transition-colors whitespace-nowrap"
+              className="inline-flex items-center gap-1.5 px-3 py-2 text-xs sm:text-sm font-medium text-slate-700 bg-slate-100 hover:bg-slate-200 rounded-xl transition-colors whitespace-nowrap"
             >
               <Download className="w-4 h-4" />
               Xuất Excel
@@ -223,7 +281,7 @@ export function StudentRosterTab({ classId, students, onRefreshWorkspace }: Stud
             <button
               type="button"
               onClick={openAddModal}
-              className="inline-flex items-center gap-1.5 px-4 py-2 text-xs sm:text-sm font-semibold text-white bg-blue-700 hover:bg-blue-800 rounded-lg transition-colors whitespace-nowrap"
+              className="inline-flex items-center gap-1.5 px-4 py-2 text-xs sm:text-sm font-semibold text-white bg-blue-600 hover:bg-blue-700 rounded-xl transition-colors whitespace-nowrap"
             >
               <Plus className="w-4 h-4" />
               Thêm học sinh
@@ -231,25 +289,25 @@ export function StudentRosterTab({ classId, students, onRefreshWorkspace }: Stud
           </div>
         </div>
 
-        {/* Search & Filter Controls */}
-        <div className="mt-4 pt-4 border-t border-slate-100 grid grid-cols-1 sm:grid-cols-3 gap-3">
-          <div className="relative">
+        {/* Search, Filter & AI Mode Toggle */}
+        <div className="mt-4 pt-4 border-t border-slate-100 flex flex-col sm:flex-row sm:items-center gap-3">
+          <div className="relative flex-1">
             <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
             <input
               type="text"
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              placeholder="Tìm theo tên hoặc mã HS..."
-              className="w-full pl-9 pr-3 py-2 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-600"
+              placeholder="Tìm theo họ tên hoặc mã học sinh..."
+              className="w-full pl-9 pr-3 py-2 text-sm border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-600"
             />
           </div>
 
           <select
             value={filterTo}
             onChange={(e) => setFilterTo(e.target.value)}
-            className="px-3 py-2 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-600"
+            className="px-3 py-2 text-sm border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-600"
           >
-            <option value="all">Tất cả Tổ</option>
+            <option value="all">Tất cả 4 Tổ</option>
             {distinctTos.map((t) => (
               <option key={t} value={String(t)}>
                 Tổ {t}
@@ -257,52 +315,49 @@ export function StudentRosterTab({ classId, students, onRefreshWorkspace }: Stud
             ))}
           </select>
 
-          <select
-            value={filterSeed}
-            onChange={(e) => setFilterSeed(e.target.value)}
-            className="px-3 py-2 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-600"
-          >
-            <option value="all">Tất cả mức Hạt giống (1–5)</option>
-            {([1, 2, 3, 4, 5] as SeedLevel[]).map((seed) => (
-              <option key={seed} value={String(seed)}>
-                {SEED_LABELS[seed]}
-              </option>
-            ))}
-          </select>
+          <label className="inline-flex items-center gap-2 text-xs font-medium text-slate-700 cursor-pointer shrink-0 px-2">
+            <input
+              type="checkbox"
+              checked={useAiParser}
+              onChange={(e) => setUseAiParser(e.target.checked)}
+              className="rounded border-slate-300 text-violet-600 focus:ring-violet-500"
+            />
+            Dùng AI Gemini đọc hiểu file Excel lộn xộn
+          </label>
         </div>
 
         {importError && (
-          <div className="mt-3 p-3 text-xs font-medium text-red-700 bg-red-50 border border-red-200 rounded-lg">
+          <div className="mt-3 p-3 text-xs font-medium text-red-700 bg-red-50 border border-red-200 rounded-xl">
             {importError}
           </div>
         )}
         {statusMsg && (
-          <div className="mt-3 p-3 text-xs font-medium text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-lg">
+          <div className="mt-3 p-3 text-xs font-medium text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-xl">
             {statusMsg}
           </div>
         )}
       </div>
 
-      {/* Excel Preview Drawer/Card */}
+      {/* Excel Preview Card */}
       {importPreview && (
-        <div className="bg-white border border-blue-200 rounded-xl p-5">
+        <div className="bg-white border border-violet-200 rounded-2xl p-5">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-4 border-b border-slate-100">
             <div>
               <h3 className="text-base font-bold text-slate-900">
-                Xem trước dữ liệu Excel ({importPreview.length} học sinh)
+                Xem trước dữ liệu chuyển đổi ({importPreview.length} học sinh)
               </h3>
               <p className="text-xs text-slate-500">
-                Kiểm tra lại thông tin trước khi lưu vào hệ thống.
+                Kiểm tra lại ngày sinh, tổ, nhóm, nhóm trưởng và điểm đánh giá trước khi lưu.
               </p>
             </div>
-            <div className="flex flex-wrap items-center gap-3">
+            <div className="flex flex-wrap items-center gap-2.5">
               <select
                 value={importMode}
                 onChange={(e) => setImportMode(e.target.value as 'import-merge' | 'import-replace')}
                 className="px-3 py-1.5 text-xs font-medium border border-slate-200 rounded-lg"
               >
-                <option value="import-merge">Cập nhật &amp; thêm mới vào lớp {classId}</option>
-                <option value="import-replace">Thay thế toàn bộ danh sách lớp {classId}</option>
+                <option value="import-merge">Cập nhật &amp; thêm mới</option>
+                <option value="import-replace">Thay thế danh sách lớp {classId}</option>
               </select>
               <button
                 type="button"
@@ -315,9 +370,9 @@ export function StudentRosterTab({ classId, students, onRefreshWorkspace }: Stud
                 type="button"
                 onClick={handleConfirmImport}
                 disabled={submitting}
-                className="px-4 py-1.5 text-xs font-semibold text-white bg-blue-700 hover:bg-blue-800 rounded-lg"
+                className="px-4 py-1.5 text-xs font-semibold text-white bg-blue-600 hover:bg-blue-700 rounded-lg"
               >
-                {submitting ? 'Đang nhập...' : 'Xác nhận nhập dữ liệu'}
+                {submitting ? 'Đang lưu...' : 'Xác nhận lưu danh sách'}
               </button>
             </div>
           </div>
@@ -326,27 +381,40 @@ export function StudentRosterTab({ classId, students, onRefreshWorkspace }: Stud
             <table className="w-full text-left text-xs border-collapse">
               <thead>
                 <tr className="border-b border-slate-200 text-slate-500">
-                  <th className="py-2 pr-3">Mã HS</th>
-                  <th className="py-2 px-3">Họ và tên</th>
+                  <th className="py-2 pr-3">Họ và tên</th>
+                  <th className="py-2 px-3">Ngày sinh</th>
                   <th className="py-2 px-3">Lớp</th>
                   <th className="py-2 px-3">Tổ</th>
-                  <th className="py-2 px-3">Hạt giống (1–5)</th>
                   <th className="py-2 px-3">Nhóm</th>
-                  <th className="py-2 pl-3">Ghi chú</th>
+                  <th className="py-2 px-3">Nhóm trưởng</th>
+                  <th className="py-2 pl-3">Điểm (1–10)</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
                 {importPreview.map((row, i) => (
                   <tr key={i}>
-                    <td className="py-2 pr-3 font-mono">{row.studentCode}</td>
-                    <td className="py-2 px-3 font-medium text-slate-900">{row.name}</td>
+                    <td className="py-2 pr-3 font-semibold text-slate-900">{row.name}</td>
+                    <td className="py-2 px-3 font-mono tabular-nums">{row.birthDate || '—'}</td>
                     <td className="py-2 px-3">{row.classId}</td>
                     <td className="py-2 px-3 font-mono">Tổ {row.to}</td>
-                    <td className="py-2 px-3 font-mono">Mức {row.seed}</td>
                     <td className="py-2 px-3 font-mono">Nhóm {row.groupNumber}</td>
-                    <td className="py-2 pl-3 text-slate-500">
-                      {row.warnings.length > 0 ? row.warnings.join(', ') : row.note || '—'}
+                    <td className="py-2 px-3">
+                      <input
+                        type="checkbox"
+                        checked={row.isLeader}
+                        onChange={(e) =>
+                          setImportPreview((prev) =>
+                            prev
+                              ? prev.map((item, idx) =>
+                                  idx === i ? { ...item, isLeader: e.target.checked } : item
+                                )
+                              : prev
+                          )
+                        }
+                        className="rounded border-slate-300 text-amber-600"
+                      />
                     </td>
+                    <td className="py-2 pl-3 font-mono tabular-nums">{row.score}</td>
                   </tr>
                 ))}
               </tbody>
@@ -356,17 +424,17 @@ export function StudentRosterTab({ classId, students, onRefreshWorkspace }: Stud
       )}
 
       {/* Students Table */}
-      <div className="bg-white border border-slate-200 rounded-xl overflow-hidden">
+      <div className="bg-white border border-slate-200 rounded-2xl overflow-hidden">
         <div className="overflow-x-auto">
           <table className="w-full text-left text-sm border-collapse">
             <thead>
               <tr className="bg-slate-50 border-b border-slate-200 text-xs font-semibold text-slate-600">
-                <th className="py-3 px-4">Mã HS</th>
                 <th className="py-3 px-4">Họ và tên</th>
+                <th className="py-3 px-4">Ngày sinh</th>
                 <th className="py-3 px-4">Tổ</th>
-                <th className="py-3 px-4">Nhóm QR</th>
-                <th className="py-3 px-4">Hạt giống (1 Cao → 5 Thấp)</th>
-                <th className="py-3 px-4">Ghi chú</th>
+                <th className="py-3 px-4">Nhóm (1–8)</th>
+                <th className="py-3 px-4 text-center">Nhóm trưởng</th>
+                <th className="py-3 px-4">Điểm đánh giá (1–10)</th>
                 <th className="py-3 px-4 text-right">Thao tác</th>
               </tr>
             </thead>
@@ -374,37 +442,49 @@ export function StudentRosterTab({ classId, students, onRefreshWorkspace }: Stud
               {filtered.length === 0 ? (
                 <tr>
                   <td colSpan={7} className="py-10 text-center text-sm text-slate-500">
-                    Không tìm thấy học sinh phù hợp.
+                    Chưa có học sinh nào trong danh sách phù hợp.
                   </td>
                 </tr>
               ) : (
                 filtered.map((stu) => (
                   <tr key={stu.id} className="hover:bg-slate-50/80 transition-colors">
-                    <td className="py-3 px-4 font-mono text-xs text-slate-600 whitespace-nowrap">
-                      {stu.studentCode}
+                    <td className="py-3 px-4 whitespace-nowrap">
+                      <div className="font-semibold text-slate-900 flex items-center gap-1.5">
+                        {stu.name}
+                        {stu.isLeader && <Crown className="w-3.5 h-3.5 text-amber-500 shrink-0" />}
+                      </div>
+                      <div className="text-xs font-mono text-slate-400">{stu.studentCode}</div>
                     </td>
-                    <td className="py-3 px-4 font-medium text-slate-900 whitespace-nowrap">{stu.name}</td>
+                    <td className="py-3 px-4 font-mono tabular-nums text-xs text-slate-600 whitespace-nowrap">
+                      {stu.birthDate || '—'}
+                    </td>
                     <td className="py-3 px-4 font-mono tabular-nums text-slate-700 whitespace-nowrap">
                       Tổ {stu.to}
                     </td>
-                    <td className="py-3 px-4 font-mono tabular-nums text-blue-700 font-semibold whitespace-nowrap">
+                    <td className="py-3 px-4 font-mono tabular-nums text-blue-700 font-bold whitespace-nowrap">
                       Nhóm {stu.groupNumber}
                     </td>
-                    <td className="py-3 px-4 whitespace-nowrap">
-                      <select
-                        value={stu.seed}
-                        onChange={(e) => handleQuickSeedChange(stu, Number(e.target.value) as SeedLevel)}
-                        className="px-2.5 py-1 text-xs font-mono border border-slate-200 rounded-md bg-white focus:outline-none focus:ring-2 focus:ring-blue-600"
-                      >
-                        {([1, 2, 3, 4, 5] as SeedLevel[]).map((lvl) => (
-                          <option key={lvl} value={lvl}>
-                            {SEED_LABELS[lvl]}
-                          </option>
-                        ))}
-                      </select>
+                    <td className="py-3 px-4 text-center whitespace-nowrap">
+                      <label className="inline-flex items-center gap-1.5 cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={Boolean(stu.isLeader)}
+                          onChange={() => handleToggleLeader(stu)}
+                          className="w-4 h-4 rounded border-slate-300 text-amber-600 focus:ring-amber-500 cursor-pointer"
+                        />
+                        <span className="text-xs text-slate-500">{stu.isLeader ? 'Có' : ''}</span>
+                      </label>
                     </td>
-                    <td className="py-3 px-4 text-xs text-slate-500 max-w-xs truncate">
-                      {stu.note || '—'}
+                    <td className="py-3 px-4 whitespace-nowrap">
+                      <input
+                        type="number"
+                        min={1}
+                        max={10}
+                        step="0.5"
+                        value={stu.score ?? 7}
+                        onChange={(e) => handleQuickScoreChange(stu, e.target.value)}
+                        className="w-20 px-2.5 py-1 text-xs font-mono font-bold tabular-nums border border-slate-200 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-blue-600"
+                      />
                     </td>
                     <td className="py-3 px-4 text-right whitespace-nowrap">
                       <div className="inline-flex items-center gap-1.5">
@@ -412,7 +492,7 @@ export function StudentRosterTab({ classId, students, onRefreshWorkspace }: Stud
                           type="button"
                           onClick={() => openEditModal(stu)}
                           title="Chỉnh sửa"
-                          className="p-1.5 text-slate-500 hover:text-blue-700 hover:bg-blue-50 rounded-md"
+                          className="p-1.5 text-slate-500 hover:text-blue-700 hover:bg-blue-50 rounded-lg"
                         >
                           <Edit3 className="w-4 h-4" />
                         </button>
@@ -420,7 +500,7 @@ export function StudentRosterTab({ classId, students, onRefreshWorkspace }: Stud
                           type="button"
                           onClick={() => handleDeleteStudent(stu.id)}
                           title="Xóa"
-                          className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-md"
+                          className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg"
                         >
                           <Trash2 className="w-4 h-4" />
                         </button>
@@ -437,7 +517,7 @@ export function StudentRosterTab({ classId, students, onRefreshWorkspace }: Stud
       {/* Add/Edit Student Modal */}
       {modalOpen && (
         <div className="fixed inset-0 z-50 bg-slate-900/40 flex items-center justify-center p-4">
-          <div className="bg-white border border-slate-200 rounded-xl w-full max-w-md p-6 shadow-lg">
+          <div className="bg-white border border-slate-200 rounded-2xl w-full max-w-md p-6 shadow-lg">
             <div className="flex items-center justify-between pb-3 border-b border-slate-100 mb-4">
               <h3 className="text-base font-bold text-slate-900">
                 {editingStudent ? 'Chỉnh sửa thông tin học sinh' : `Thêm học sinh vào Lớp ${classId}`}
@@ -452,29 +532,6 @@ export function StudentRosterTab({ classId, students, onRefreshWorkspace }: Stud
             </div>
 
             <form onSubmit={handleSaveStudent} className="space-y-3.5">
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-xs font-medium text-slate-700 mb-1">Mã học sinh</label>
-                  <input
-                    type="text"
-                    value={formCode}
-                    onChange={(e) => setFormCode(e.target.value)}
-                    className="w-full px-3 py-2 text-sm font-mono border border-slate-200 rounded-lg"
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs font-medium text-slate-700 mb-1">Tổ</label>
-                  <input
-                    type="number"
-                    min={1}
-                    max={12}
-                    value={formTo}
-                    onChange={(e) => setFormTo(Math.max(1, Number(e.target.value) || 1))}
-                    className="w-full px-3 py-2 text-sm font-mono tabular-nums border border-slate-200 rounded-lg"
-                  />
-                </div>
-              </div>
-
               <div>
                 <label className="block text-xs font-medium text-slate-700 mb-1">Họ và tên *</label>
                 <input
@@ -482,18 +539,55 @@ export function StudentRosterTab({ classId, students, onRefreshWorkspace }: Stud
                   required
                   value={formName}
                   onChange={(e) => setFormName(e.target.value)}
-                  placeholder="Nhập họ tên học sinh..."
-                  className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg"
+                  placeholder="Nhập họ và tên học sinh..."
+                  className="w-full px-3 py-2 text-sm border border-slate-200 rounded-xl"
                 />
               </div>
 
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-xs font-medium text-slate-700 mb-1">Nhóm QR (1–5)</label>
+                  <label className="block text-xs font-medium text-slate-700 mb-1">Ngày tháng năm sinh</label>
+                  <input
+                    type="text"
+                    value={formBirthDate}
+                    onChange={(e) => setFormBirthDate(e.target.value)}
+                    placeholder="DD/MM/YYYY"
+                    className="w-full px-3 py-2 text-sm font-mono border border-slate-200 rounded-xl"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-slate-700 mb-1">Mã học sinh</label>
+                  <input
+                    type="text"
+                    value={formCode}
+                    onChange={(e) => setFormCode(e.target.value)}
+                    className="w-full px-3 py-2 text-sm font-mono border border-slate-200 rounded-xl"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-3 gap-3">
+                <div>
+                  <label className="block text-xs font-medium text-slate-700 mb-1">Tổ (1–4)</label>
+                  <select
+                    value={formTo}
+                    onChange={(e) => setFormTo(Number(e.target.value))}
+                    className="w-full px-3 py-2 text-sm border border-slate-200 rounded-xl"
+                  >
+                    {[1, 2, 3, 4].map((t) => (
+                      <option key={t} value={t}>
+                        Tổ {t}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-medium text-slate-700 mb-1">Nhóm (1–8)</label>
                   <select
                     value={formGroup}
                     onChange={(e) => setFormGroup(Number(e.target.value) as GroupNumber)}
-                    className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg"
+                    className="w-full px-3 py-2 text-sm border border-slate-200 rounded-xl"
                   >
                     {GROUP_NUMBERS.map((g) => (
                       <option key={g} value={g}>
@@ -504,29 +598,37 @@ export function StudentRosterTab({ classId, students, onRefreshWorkspace }: Stud
                 </div>
 
                 <div>
-                  <label className="block text-xs font-medium text-slate-700 mb-1">Hạt giống (1–5)</label>
-                  <select
-                    value={formSeed}
-                    onChange={(e) => setFormSeed(Number(e.target.value) as SeedLevel)}
-                    className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg"
-                  >
-                    {([1, 2, 3, 4, 5] as SeedLevel[]).map((lvl) => (
-                      <option key={lvl} value={lvl}>
-                        {SEED_LABELS[lvl]}
-                      </option>
-                    ))}
-                  </select>
+                  <label className="block text-xs font-medium text-slate-700 mb-1">Điểm (1–10)</label>
+                  <input
+                    type="number"
+                    min={1}
+                    max={10}
+                    step="0.5"
+                    value={formScore}
+                    onChange={(e) => setFormScore(Number(e.target.value))}
+                    className="w-full px-3 py-2 text-sm font-mono tabular-nums border border-slate-200 rounded-xl"
+                  />
                 </div>
               </div>
 
+              <label className="flex items-center gap-2.5 pt-1 text-sm font-medium text-slate-800 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={formIsLeader}
+                  onChange={(e) => setFormIsLeader(e.target.checked)}
+                  className="w-4 h-4 rounded border-slate-300 text-amber-600 focus:ring-amber-500"
+                />
+                Tick chọn học sinh này làm Nhóm trưởng
+              </label>
+
               <div>
-                <label className="block text-xs font-medium text-slate-700 mb-1">Vai trò / Ghi chú</label>
+                <label className="block text-xs font-medium text-slate-700 mb-1">Ghi chú</label>
                 <input
                   type="text"
                   value={formNote}
                   onChange={(e) => setFormNote(e.target.value)}
-                  placeholder="Ví dụ: Nhóm trưởng, Thư ký..."
-                  className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg"
+                  placeholder="Ghi chú thêm nếu có..."
+                  className="w-full px-3 py-2 text-sm border border-slate-200 rounded-xl"
                 />
               </div>
 
@@ -534,14 +636,14 @@ export function StudentRosterTab({ classId, students, onRefreshWorkspace }: Stud
                 <button
                   type="button"
                   onClick={() => setModalOpen(false)}
-                  className="px-4 py-2 text-sm font-medium text-slate-600 bg-slate-100 hover:bg-slate-200 rounded-lg"
+                  className="px-4 py-2 text-sm font-medium text-slate-600 bg-slate-100 hover:bg-slate-200 rounded-xl"
                 >
                   Hủy
                 </button>
                 <button
                   type="submit"
                   disabled={submitting}
-                  className="px-4 py-2 text-sm font-semibold text-white bg-blue-700 hover:bg-blue-800 rounded-lg"
+                  className="px-4 py-2 text-sm font-semibold text-white bg-blue-600 hover:bg-blue-700 rounded-xl"
                 >
                   {submitting ? 'Đang lưu...' : editingStudent ? 'Lưu thay đổi' : 'Thêm học sinh'}
                 </button>

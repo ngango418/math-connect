@@ -10,6 +10,16 @@ service cloud.firestore {
       allow read, write: if false;
     }
 
+    match /classes/{classId} {
+      allow read: if true;
+      allow write: if request.auth != null;
+    }
+
+    match /settings/{settingId} {
+      allow read: if true;
+      allow write: if request.auth != null;
+    }
+
     // Học sinh quét QR chỉ được ĐỌC phân công theo ngày & nhiệm vụ cứng
     match /dailyAssignments/{docId} {
       allow read: if true;
@@ -21,8 +31,7 @@ service cloud.firestore {
       allow write: if request.auth != null;
     }
 
-    // Danh sách học sinh & trường hạt giống năng lực: giáo viên đăng nhập mới ghi được
-    // Học sinh quét QR đọc danh sách thành viên nhóm
+    // Danh sách học sinh: giáo viên đăng nhập mới ghi được
     match /students/{studentId} {
       allow read: if true;
       allow write: if request.auth != null;

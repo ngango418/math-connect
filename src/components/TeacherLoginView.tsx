@@ -1,7 +1,7 @@
 import { useState, type FormEvent } from 'react';
 import { Lock, LogIn, UserPlus } from 'lucide-react';
 import type { TeacherUser } from '../../shared/types.ts';
-import { loginTeacher, registerTeacher } from '../lib/api.ts';
+import { loginTeacher, registerTeacher, resetTeacherPassword } from '../lib/api.ts';
 import { getFirebaseProjectId, isFirebaseEnvConfigured } from '../lib/firebaseClient.ts';
 
 interface TeacherLoginViewProps {
@@ -19,6 +19,18 @@ export function TeacherLoginView({ onSuccess, onSwitchToStudent }: TeacherLoginV
   const [subject, setSubject] = useState('Khối 9');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const [resetMsg, setResetMsg] = useState('');
+
+  const handleResetPassword = async () => {
+    setError('');
+    setResetMsg('');
+    try {
+      await resetTeacherPassword(email);
+      setResetMsg(`Đã gửi email đặt lại mật khẩu tới ${email}. Hãy kiểm tra hộp thư (kể cả mục Spam).`);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Không thể gửi email đặt lại mật khẩu.');
+    }
+  };
 
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
@@ -43,7 +55,7 @@ export function TeacherLoginView({ onSuccess, onSwitchToStudent }: TeacherLoginV
     <div className="max-w-4xl mx-auto px-4 sm:px-6 py-10">
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-stretch">
         {/* Left: Info & Demo Guide */}
-        <div className="lg:col-span-6 bg-white border border-slate-200 rounded-xl p-7 flex flex-col justify-between">
+        <div className="lg:col-span-6 bg-white border border-slate-200 rounded-2xl p-7 flex flex-col justify-between">
           <div>
             <div className="inline-flex items-center gap-2 text-xs font-semibold text-blue-700 mb-3">
               <Lock className="w-4 h-4" />
@@ -53,11 +65,9 @@ export function TeacherLoginView({ onSuccess, onSwitchToStudent }: TeacherLoginV
               Đăng nhập Không gian Giáo viên
             </h1>
             <p className="text-sm text-slate-600 mt-2 leading-relaxed">
-              Quản lý trọn vẹn 3 lớp <span className="font-semibold text-slate-900">9/23</span>,{' '}
-              <span className="font-semibold text-slate-900">9/26</span>,{' '}
-              <span className="font-semibold text-slate-900">9/28</span>: phân chia 5 nhiệm vụ theo thẻ QR,
-              nhập danh sách học sinh từ Excel, chia tổ ngẫu nhiên cân bằng theo hạt giống năng lực (1–5)
-              và chấm điểm xếp hạng theo ngày.
+              Quản lý nhiều lớp học, nhập danh sách bằng <span className="font-semibold text-slate-900">AI đọc file Excel</span>,
+              chia 4 Tổ thành <span className="font-semibold text-slate-900">8 Nhóm ngẫu nhiên cân bằng tổng điểm (1–10)</span>,
+              cấu hình phát thẻ tự động cho 5 nhiệm vụ kèm mã QR và chấm điểm cộng/trừ cuối buổi dạng bảng tính.
             </p>
 
             {firebaseReady ? (
@@ -68,8 +78,8 @@ export function TeacherLoginView({ onSuccess, onSwitchToStudent }: TeacherLoginV
                 <p className="text-xs text-slate-600 leading-relaxed">
                   Nếu đây là lần đầu bạn sử dụng dự án Firebase mới, hãy chọn tab{' '}
                   <strong>Đăng ký mới</strong> ở bên phải để tạo tài khoản giáo viên đầu tiên.
-                  Ngay sau khi đăng ký thành công, hệ thống sẽ tự động khởi tạo toàn bộ 4 bảng dữ liệu
-                  (Lớp học, 5 Nhiệm vụ cứng, Thẻ QR, Bảng điểm) lên Firestore của bạn.
+                  Ngay sau khi đăng ký thành công, hệ thống sẽ tự động khởi tạo toàn bộ các bảng dữ liệu
+                  (Lớp học, Học sinh, 5 Nhiệm vụ, Cấu hình 8 Nhóm, Thẻ QR, Bảng điểm) lên Firestore của bạn.
                 </p>
               </div>
             ) : (
@@ -174,7 +184,18 @@ export function TeacherLoginView({ onSuccess, onSwitchToStudent }: TeacherLoginV
             </div>
 
             <div>
-              <label className="block text-xs font-medium text-slate-700 mb-1">Mật khẩu</label>
+              <div className="flex items-center justify-between mb-1">
+                <label className="block text-xs font-medium text-slate-700">Mật khẩu</label>
+                {firebaseReady && mode === 'login' && (
+                  <button
+                    type="button"
+                    onClick={handleResetPassword}
+                    className="text-xs font-medium text-blue-700 hover:underline"
+                  >
+                    Quên mật khẩu?
+                  </button>
+                )}
+              </div>
               <input
                 type="password"
                 required
@@ -186,9 +207,27 @@ export function TeacherLoginView({ onSuccess, onSwitchToStudent }: TeacherLoginV
               />
             </div>
 
+            {resetMsg && (
+              <div className="p-3 text-xs font-medium text-emerald-800 bg-emerald-50 border border-emerald-200 rounded-lg">
+                {resetMsg}
+              </div>
+            )}
+
             {error && (
-              <div className="p-3 text-xs font-medium text-red-700 bg-red-50 border border-red-200 rounded-lg">
-                {error}
+              <div className="p-3 text-xs font-medium text-red-700 bg-red-50 border border-red-200 rounded-lg space-y-2">
+                <div>{error}</div>
+                {mode === 'register' && error.includes('đã được đăng ký') && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setMode('login');
+                      setError('');
+                    }}
+                    className="font-semibold text-blue-700 hover:underline block"
+                  >
+                    Chuyển sang tab Đăng nhập với email này →
+                  </button>
+                )}
               </div>
             )}
 
