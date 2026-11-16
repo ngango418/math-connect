@@ -31,15 +31,38 @@ import type {
 } from '../../shared/types.ts';
 import { createClientSeedSnapshot, createDefaultAllocationConfig } from './defaultSeedData.ts';
 import { getFirebaseServices, isFirebaseEnvConfigured } from './firebaseClient.ts';
+import {
+  fromDbAssignment,
+  fromDbClass,
+  fromDbGrade,
+  fromDbMission,
+  fromDbStudent,
+  getSupabaseClient,
+  isSupabaseEnvConfigured,
+  toDbAssignment,
+  toDbClass,
+  toDbGrade,
+  toDbMission,
+  toDbStudent,
+  type DbClassRow,
+  type DbCoreMissionRow,
+  type DbDailyAssignmentRow,
+  type DbDailyGradeRow,
+  type DbStudentRow,
+} from './supabaseClient.ts';
 
 const TOKEN_STORAGE_KEY = 'classqr_teacher_token';
 const LOCAL_SNAPSHOT_KEY = 'classqr_local_snapshot_v3';
 const LOCAL_TEACHERS_KEY = 'classqr_local_teachers_v1';
 const LOCAL_SESSION_KEY = 'classqr_local_session_v1';
 
-export type StorageBackendMode = 'firebase' | 'server' | 'local';
+export type StorageBackendMode = 'supabase' | 'firebase' | 'server' | 'local';
 
-let detectedBackendMode: StorageBackendMode = isFirebaseEnvConfigured() ? 'firebase' : 'server';
+let detectedBackendMode: StorageBackendMode = isSupabaseEnvConfigured()
+  ? 'supabase'
+  : isFirebaseEnvConfigured()
+  ? 'firebase'
+  : 'server';
 
 export function getActiveStorageMode(): StorageBackendMode {
   return detectedBackendMode;
@@ -100,6 +123,12 @@ function normalizeStudentRecord(raw: Partial<Student>): Student {
     score: normalizeScore(raw.score ?? 7),
     note: raw.note || '',
   };
+}
+
+function sortClassroomsNaturally(list: ClassroomInfo[]): ClassroomInfo[] {
+  return [...list].sort((a, b) =>
+    a.name.localeCompare(b.name, 'vi', { numeric: true, sensitivity: 'base' })
+  );
 }
 
 function getLocalSnapshot(): WorkspaceSnapshot {
@@ -188,10 +217,34 @@ async function serverFetch<T>(url: string, options: RequestInit = {}): Promise<T
   return data as T;
 }
 
+function mapSupabaseError(err: unknown): string {
+  const raw = err instanceof Error ? err.message : (err as { message?: string })?.message || String(err);
+  if (
+    raw.includes('Could not find the table') ||
+    raw.includes('PGRST205') ||
+    (raw.includes('relation') && raw.includes('does not exist'))
+  ) {
+    return 'Database Supabase chưa có các bảng dữ liệu. Hãy vào tab "Liên kết Database", chép đoạn mã SQL và chạy trong Supabase → SQL Editor.';
+  }
+  if (raw.includes('row-level security') || raw.includes('permission denied')) {
+    return 'Supabase từ chối quyền ghi (RLS). Hãy kiểm tra lại bước đăng nhập hoặc chạy đầy đủ đoạn SQL phân quyền trong tab "Liên kết Database".';
+  }
+  if (raw.includes('Invalid login credentials')) {
+    return 'Email hoặc mật khẩu Supabase không chính xác.';
+  }
+  if (raw.includes('User already registered')) {
+    return 'Email này đã được đăng ký trên Supabase.';
+  }
+  if (raw.includes('Email not confirmed')) {
+    return 'Email chưa được xác nhận. Kiểm tra hộp thư hoặc vào Supabase → Authentication → Providers → Email tắt "Confirm email".';
+  }
+  return raw;
+}
+
 function mapFirestoreError(err: unknown): string {
   const msg = err instanceof Error ? err.message : String(err);
   if (msg.includes('permission-denied') || msg.includes('Missing or insufficient permissions')) {
-    return 'Firestore từ chối quyền ghi (permission-denied). Hãy mở tab Liên kết Firebase, chép bộ Rules và nhấn Publish trên Firebase Console.';
+    return 'Firestore từ chối quyền ghi (permission-denied). Hãy mở tab Liên kết Database, chép bộ Rules và nhấn Publish trên Firebase Console.';
   }
   if (msg.includes('not-found') || msg.includes('does not exist') || msg.includes('FAILED_PRECONDITION')) {
     return 'Dự án Firebase này chưa bật Firestore Database. Hãy vào Firebase Console → Build → Firestore Database → Create database.';
@@ -220,6 +273,93 @@ async function commitChunkedBatch(
     }
     await batch.commit();
   }
+}
+
+export async function initializeSupabaseDatabase(forceReset = false): Promise<{
+  created: boolean;
+  counts: { missions: number; students: number; assignments: number; grades: number };
+}> {
+  const sb = getSupabaseClient();
+  if (!sb) {
+    throw new Error('Chưa cấu hình URL và Anon Key cho Supabase.');
+  }
+
+  const { data: existingMissions, error: mErr } = await sb.from('core_missions').select('id');
+  if (mErr) throw new Error(mapSupabaseError(mErr));
+
+  const { data: existingClasses, error: cErr } = await sb.from('classes').select('id');
+  if (cErr) throw new Error(mapSupabaseError(cErr));
+
+  if (
+    !forceReset &&
+    existingMissions &&
+    existingMissions.length > 0 &&
+    existingClasses &&
+    existingClasses.length > 0
+  ) {
+    const [stuRes, assignRes, gradeRes] = await Promise.all([
+      sb.from('students').select('id', { count: 'exact', head: true }),
+      sb.from('daily_assignments').select('id', { count: 'exact', head: true }),
+      sb.from('daily_grades').select('id', { count: 'exact', head: true }),
+    ]);
+    return {
+      created: false,
+      counts: {
+        missions: existingMissions.length,
+        students: stuRes.count || 0,
+        assignments: assignRes.count || 0,
+        grades: gradeRes.count || 0,
+      },
+    };
+  }
+
+  if (forceReset) {
+    await Promise.all([
+      sb.from('students').delete().neq('id', ''),
+      sb.from('classes').delete().neq('id', ''),
+      sb.from('daily_assignments').delete().neq('id', ''),
+      sb.from('daily_grades').delete().neq('id', ''),
+    ]);
+  }
+
+  const seed = createClientSeedSnapshot();
+
+  const { error: clsErr } = await sb.from('classes').upsert(seed.classes.map(toDbClass));
+  if (clsErr) throw new Error(mapSupabaseError(clsErr));
+
+  const { error: misErr } = await sb.from('core_missions').upsert(seed.coreMissions.map(toDbMission));
+  if (misErr) throw new Error(mapSupabaseError(misErr));
+
+  const { error: setErr } = await sb
+    .from('app_settings')
+    .upsert({ id: 'allocationConfig', data: seed.allocationConfig });
+  if (setErr) throw new Error(mapSupabaseError(setErr));
+
+  const dbStudents = seed.students.map(toDbStudent);
+  for (let i = 0; i < dbStudents.length; i += 200) {
+    const { error: stuErr } = await sb.from('students').upsert(dbStudents.slice(i, i + 200));
+    if (stuErr) throw new Error(mapSupabaseError(stuErr));
+  }
+
+  const { error: assignErr } = await sb
+    .from('daily_assignments')
+    .upsert(seed.assignments.map(toDbAssignment));
+  if (assignErr) throw new Error(mapSupabaseError(assignErr));
+
+  if (seed.grades.length > 0) {
+    const { error: gradeErr } = await sb.from('daily_grades').upsert(seed.grades.map(toDbGrade));
+    if (gradeErr) throw new Error(mapSupabaseError(gradeErr));
+  }
+
+  return {
+    created: true,
+    counts: {
+      missions: seed.coreMissions.length,
+      students: seed.students.length,
+      assignments: seed.assignments.length,
+      grades: seed.grades.length,
+    },
+  };
 }
 
 export async function initializeFirestoreDatabase(forceReset = false): Promise<{
@@ -302,10 +442,6 @@ export async function initializeFirestoreDatabase(forceReset = false): Promise<{
   }
 }
 
-async function seedFirestoreIfEmpty(): Promise<void> {
-  await initializeFirestoreDatabase(false);
-}
-
 function waitForFirebaseUser(): Promise<TeacherUser | null> {
   const fb = getFirebaseServices();
   if (!fb) return Promise.resolve(null);
@@ -344,6 +480,26 @@ function mapFirebaseAuthError(err: unknown): string {
 }
 
 export async function loginTeacher(email: string, password: string): Promise<{ token: string; user: TeacherUser }> {
+  const sb = getSupabaseClient();
+  if (sb) {
+    detectedBackendMode = 'supabase';
+    const { data, error } = await sb.auth.signInWithPassword({
+      email: email.trim(),
+      password,
+    });
+    if (error) throw new Error(mapSupabaseError(error));
+    const meta = (data.user.user_metadata || {}) as { name?: string; subject?: string };
+    return {
+      token: data.session?.access_token || 'supabase-session',
+      user: {
+        id: data.user.id,
+        email: data.user.email || email.trim(),
+        name: meta.name || 'Giáo viên',
+        subject: meta.subject || 'Khối 9',
+      },
+    };
+  }
+
   const fb = getFirebaseServices();
   if (fb) {
     detectedBackendMode = 'firebase';
@@ -397,6 +553,36 @@ export async function registerTeacher(
   name: string,
   subject: string
 ): Promise<{ token: string; user: TeacherUser }> {
+  const sb = getSupabaseClient();
+  if (sb) {
+    detectedBackendMode = 'supabase';
+    const { data, error } = await sb.auth.signUp({
+      email: email.trim(),
+      password,
+      options: {
+        data: {
+          name: name.trim() || 'Giáo viên',
+          subject: subject.trim() || 'Khối 9',
+        },
+      },
+    });
+    if (error) throw new Error(mapSupabaseError(error));
+    if (!data.session) {
+      throw new Error(
+        'Tài khoản đã được tạo! Hãy mở email để xác nhận, HOẶC vào Supabase → Authentication → Providers → Email và tắt "Confirm email" để đăng nhập ngay.'
+      );
+    }
+    return {
+      token: data.session.access_token,
+      user: {
+        id: data.user?.id || 'sb-teacher',
+        email: data.user?.email || email.trim(),
+        name: name.trim() || 'Giáo viên',
+        subject: subject.trim() || 'Khối 9',
+      },
+    };
+  }
+
   const fb = getFirebaseServices();
   if (fb) {
     detectedBackendMode = 'firebase';
@@ -455,6 +641,21 @@ export async function registerTeacher(
 }
 
 export async function fetchCurrentTeacher(): Promise<TeacherUser | null> {
+  const sb = getSupabaseClient();
+  if (sb) {
+    detectedBackendMode = 'supabase';
+    const { data } = await sb.auth.getSession();
+    const u = data.session?.user;
+    if (!u) return null;
+    const meta = (u.user_metadata || {}) as { name?: string; subject?: string };
+    return {
+      id: u.id,
+      email: u.email || '',
+      name: meta.name || 'Giáo viên',
+      subject: meta.subject || 'Khối 9',
+    };
+  }
+
   const fb = getFirebaseServices();
   if (fb) {
     detectedBackendMode = 'firebase';
@@ -485,6 +686,12 @@ export async function fetchCurrentTeacher(): Promise<TeacherUser | null> {
 }
 
 export async function logoutTeacher(): Promise<void> {
+  const sb = getSupabaseClient();
+  if (sb) {
+    await sb.auth.signOut();
+    return;
+  }
+
   const fb = getFirebaseServices();
   if (fb) {
     await signOut(fb.auth);
@@ -501,23 +708,37 @@ export async function logoutTeacher(): Promise<void> {
 }
 
 export async function resetTeacherPassword(email: string): Promise<void> {
-  const fb = getFirebaseServices();
-  if (!fb) {
-    throw new Error('Chức năng đặt lại mật khẩu qua email chỉ dùng khi đã kết nối Firebase.');
-  }
   if (!email.trim()) {
     throw new Error('Vui lòng nhập email trước khi yêu cầu đặt lại mật khẩu.');
+  }
+  const sb = getSupabaseClient();
+  if (sb) {
+    const { error } = await sb.auth.resetPasswordForEmail(email.trim());
+    if (error) throw new Error(mapSupabaseError(error));
+    return;
+  }
+
+  const fb = getFirebaseServices();
+  if (!fb) {
+    throw new Error('Chức năng đặt lại mật khẩu qua email chỉ dùng khi đã kết nối Supabase hoặc Firebase.');
   }
   await sendPasswordResetEmail(fb.auth, email.trim());
 }
 
-function sortClassroomsNaturally(list: ClassroomInfo[]): ClassroomInfo[] {
-  return [...list].sort((a, b) =>
-    a.name.localeCompare(b.name, 'vi', { numeric: true, sensitivity: 'base' })
-  );
-}
-
 export async function fetchPublicClasses(): Promise<ClassroomInfo[]> {
+  const sb = getSupabaseClient();
+  if (sb) {
+    try {
+      const { data, error } = await sb.from('classes').select('*');
+      if (!error && data && data.length > 0) {
+        return sortClassroomsNaturally((data as DbClassRow[]).map(fromDbClass));
+      }
+    } catch {
+      // fall through
+    }
+    return createClientSeedSnapshot().classes;
+  }
+
   const fb = getFirebaseServices();
   if (fb) {
     try {
@@ -532,9 +753,9 @@ export async function fetchPublicClasses(): Promise<ClassroomInfo[]> {
 
   try {
     const res = await serverFetch<{ classes: ClassroomInfo[] }>('/api/public/classes');
-    return res.classes;
+    return sortClassroomsNaturally(res.classes);
   } catch {
-    return getLocalSnapshot().classes;
+    return sortClassroomsNaturally(getLocalSnapshot().classes);
   }
 }
 
@@ -543,6 +764,45 @@ export async function fetchPublicStudentMission(
   groupNumber: number,
   date: string
 ): Promise<PublicStudentMissionResponse> {
+  const sb = getSupabaseClient();
+  if (sb) {
+    detectedBackendMode = 'supabase';
+    const [mRes, sRes, aRes, gRes] = await Promise.all([
+      sb.from('core_missions').select('*'),
+      sb.from('students').select('*').eq('class_id', classId),
+      sb.from('daily_assignments').select('*').eq('class_id', classId),
+      sb.from('daily_grades').select('*').eq('class_id', classId).eq('published_to_students', true),
+    ]);
+
+    const coreMissions = ((mRes.data || []) as DbCoreMissionRow[]).map(fromDbMission);
+    const studentsList = ((sRes.data || []) as DbStudentRow[]).map(fromDbStudent);
+    const assignmentsList = ((aRes.data || []) as DbDailyAssignmentRow[]).map(fromDbAssignment);
+    const gradesList = ((gRes.data || []) as DbDailyGradeRow[]).map(fromDbGrade);
+
+    if (coreMissions.length === 0) {
+      const seed = createClientSeedSnapshot();
+      return buildPublicMissionResponse(
+        classId,
+        groupNumber as GroupNumber,
+        date,
+        seed.coreMissions,
+        seed.students,
+        seed.assignments,
+        seed.grades
+      );
+    }
+
+    return buildPublicMissionResponse(
+      classId,
+      groupNumber as GroupNumber,
+      date,
+      coreMissions,
+      studentsList,
+      assignmentsList,
+      gradesList
+    );
+  }
+
   const fb = getFirebaseServices();
   if (fb) {
     detectedBackendMode = 'firebase';
@@ -661,10 +921,42 @@ function buildPublicMissionResponse(
 }
 
 export async function fetchWorkspace(): Promise<WorkspaceSnapshot> {
+  const sb = getSupabaseClient();
+  if (sb) {
+    detectedBackendMode = 'supabase';
+    await initializeSupabaseDatabase(false);
+    const [clsRes, stuRes, misRes, setRes, assignRes, gradeRes] = await Promise.all([
+      sb.from('classes').select('*'),
+      sb.from('students').select('*'),
+      sb.from('core_missions').select('*'),
+      sb.from('app_settings').select('*').eq('id', 'allocationConfig').maybeSingle(),
+      sb.from('daily_assignments').select('*'),
+      sb.from('daily_grades').select('*'),
+    ]);
+
+    if (clsRes.error) throw new Error(mapSupabaseError(clsRes.error));
+    if (stuRes.error) throw new Error(mapSupabaseError(stuRes.error));
+    if (misRes.error) throw new Error(mapSupabaseError(misRes.error));
+
+    return {
+      classes: sortClassroomsNaturally(((clsRes.data || []) as DbClassRow[]).map(fromDbClass)),
+      students: ((stuRes.data || []) as DbStudentRow[])
+        .map(fromDbStudent)
+        .sort((a, b) => a.studentCode.localeCompare(b.studentCode, 'vi', { numeric: true })),
+      coreMissions: ((misRes.data || []) as DbCoreMissionRow[])
+        .map(fromDbMission)
+        .sort((a, b) => a.id - b.id),
+      allocationConfig:
+        (setRes.data?.data as MissionAllocationConfig | undefined) || createDefaultAllocationConfig(),
+      assignments: ((assignRes.data || []) as DbDailyAssignmentRow[]).map(fromDbAssignment),
+      grades: ((gradeRes.data || []) as DbDailyGradeRow[]).map(fromDbGrade),
+    };
+  }
+
   const fb = getFirebaseServices();
   if (fb) {
     detectedBackendMode = 'firebase';
-    await seedFirestoreIfEmpty();
+    await initializeFirestoreDatabase(false);
     const [classesSnap, studentsSnap, missionsSnap, settingsSnap, assignSnap, gradesSnap] = await Promise.all([
       getDocs(collection(fb.db, 'classes')),
       getDocs(collection(fb.db, 'students')),
@@ -711,6 +1003,13 @@ export async function createClassroom(name: string): Promise<ClassroomInfo> {
     createdAt: new Date().toISOString().slice(0, 10),
   };
 
+  const sb = getSupabaseClient();
+  if (sb) {
+    const { error } = await sb.from('classes').upsert(toDbClass(created));
+    if (error) throw new Error(mapSupabaseError(error));
+    return created;
+  }
+
   const fb = getFirebaseServices();
   if (fb) {
     await setDoc(doc(fb.db, 'classes', makeDocSafeId(clean)), created);
@@ -734,6 +1033,17 @@ export async function createClassroom(name: string): Promise<ClassroomInfo> {
 }
 
 export async function deleteClassroom(classId: string): Promise<void> {
+  const sb = getSupabaseClient();
+  if (sb) {
+    await Promise.all([
+      sb.from('classes').delete().eq('id', classId),
+      sb.from('students').delete().eq('class_id', classId),
+      sb.from('daily_assignments').delete().eq('class_id', classId),
+      sb.from('daily_grades').delete().eq('class_id', classId),
+    ]);
+    return;
+  }
+
   const fb = getFirebaseServices();
   if (fb) {
     await deleteDoc(doc(fb.db, 'classes', makeDocSafeId(classId)));
@@ -768,22 +1078,26 @@ export async function aiParseExcelRoster(
 }
 
 export async function createStudent(payload: Omit<Student, 'id'>): Promise<Student> {
+  const created: Student = {
+    ...payload,
+    id: `stu-${crypto.randomUUID().slice(0, 8)}`,
+  };
+
+  const sb = getSupabaseClient();
+  if (sb) {
+    const { error } = await sb.from('students').insert(toDbStudent(created));
+    if (error) throw new Error(mapSupabaseError(error));
+    return created;
+  }
+
   const fb = getFirebaseServices();
   if (fb) {
-    const created: Student = {
-      ...payload,
-      id: `stu-${crypto.randomUUID().slice(0, 8)}`,
-    };
     await setDoc(doc(fb.db, 'students', created.id), created);
     return created;
   }
 
   if (detectedBackendMode === 'local') {
     const snap = getLocalSnapshot();
-    const created: Student = {
-      ...payload,
-      id: `stu-${crypto.randomUUID().slice(0, 8)}`,
-    };
     snap.students.push(created);
     saveLocalSnapshot(snap);
     return created;
@@ -796,6 +1110,21 @@ export async function createStudent(payload: Omit<Student, 'id'>): Promise<Stude
 }
 
 export async function updateStudent(id: string, payload: Partial<Student>): Promise<Student> {
+  const sb = getSupabaseClient();
+  if (sb) {
+    const { data: existing, error: fErr } = await sb
+      .from('students')
+      .select('*')
+      .eq('id', id)
+      .maybeSingle();
+    if (fErr) throw new Error(mapSupabaseError(fErr));
+    if (!existing) throw new Error('Không tìm thấy học sinh.');
+    const updated: Student = { ...fromDbStudent(existing as DbStudentRow), ...payload };
+    const { error: uErr } = await sb.from('students').upsert(toDbStudent(updated));
+    if (uErr) throw new Error(mapSupabaseError(uErr));
+    return updated;
+  }
+
   const fb = getFirebaseServices();
   if (fb) {
     const snap = await getDocs(query(collection(fb.db, 'students'), where('id', '==', id)));
@@ -822,6 +1151,13 @@ export async function updateStudent(id: string, payload: Partial<Student>): Prom
 }
 
 export async function deleteStudent(id: string): Promise<void> {
+  const sb = getSupabaseClient();
+  if (sb) {
+    const { error } = await sb.from('students').delete().eq('id', id);
+    if (error) throw new Error(mapSupabaseError(error));
+    return;
+  }
+
   const fb = getFirebaseServices();
   if (fb) {
     await deleteDoc(doc(fb.db, 'students', id));
@@ -845,6 +1181,39 @@ export async function bulkStudentsAction(payload: {
   classId?: string;
   students: Array<Partial<Student> & { id?: string }>;
 }): Promise<{ students: Student[]; classes?: ClassroomInfo[] }> {
+  const sb = getSupabaseClient();
+  if (sb) {
+    const snap = await fetchWorkspace();
+    const { students: updated, classes: nextClasses } = applyBulkStudentTransform(
+      snap.students,
+      snap.classes,
+      payload
+    );
+    const nextIds = new Set(updated.map((s) => s.id));
+    const removedIds = snap.students.filter((s) => !nextIds.has(s.id)).map((s) => s.id);
+
+    if (removedIds.length > 0) {
+      for (let i = 0; i < removedIds.length; i += 200) {
+        const { error: delErr } = await sb
+          .from('students')
+          .delete()
+          .in('id', removedIds.slice(i, i + 200));
+        if (delErr) throw new Error(mapSupabaseError(delErr));
+      }
+    }
+
+    const dbClasses = nextClasses.map(toDbClass);
+    const { error: clsErr } = await sb.from('classes').upsert(dbClasses);
+    if (clsErr) throw new Error(mapSupabaseError(clsErr));
+
+    const dbStudents = updated.map(toDbStudent);
+    for (let i = 0; i < dbStudents.length; i += 200) {
+      const { error: upErr } = await sb.from('students').upsert(dbStudents.slice(i, i + 200));
+      if (upErr) throw new Error(mapSupabaseError(upErr));
+    }
+    return { students: updated, classes: nextClasses };
+  }
+
   const fb = getFirebaseServices();
   if (fb) {
     const snap = await fetchWorkspace();
@@ -969,6 +1338,26 @@ export async function updateCoreMission(
   missionId: number,
   payload: { title?: string; summary?: string }
 ): Promise<CoreMission> {
+  const sb = getSupabaseClient();
+  if (sb) {
+    const { data: existing, error: fErr } = await sb
+      .from('core_missions')
+      .select('*')
+      .eq('id', missionId)
+      .maybeSingle();
+    if (fErr) throw new Error(mapSupabaseError(fErr));
+    if (!existing) throw new Error('Không tìm thấy nhiệm vụ.');
+    const mission = fromDbMission(existing as DbCoreMissionRow);
+    const updated: CoreMission = {
+      ...mission,
+      ...(payload.title !== undefined ? { title: payload.title.trim() } : {}),
+      ...(payload.summary !== undefined ? { summary: payload.summary.trim() } : {}),
+    };
+    const { error: uErr } = await sb.from('core_missions').upsert(toDbMission(updated));
+    if (uErr) throw new Error(mapSupabaseError(uErr));
+    return updated;
+  }
+
   const fb = getFirebaseServices();
   if (fb) {
     const snap = await fetchWorkspace();
@@ -1003,6 +1392,27 @@ export async function addMissionCard(
   missionId: number,
   payload: Omit<MissionCard, 'id' | 'missionId'>
 ): Promise<MissionCard> {
+  const sb = getSupabaseClient();
+  if (sb) {
+    const { data: existing, error: fErr } = await sb
+      .from('core_missions')
+      .select('*')
+      .eq('id', missionId)
+      .maybeSingle();
+    if (fErr) throw new Error(mapSupabaseError(fErr));
+    if (!existing) throw new Error('Không tìm thấy nhiệm vụ.');
+    const mission = fromDbMission(existing as DbCoreMissionRow);
+    const card: MissionCard = {
+      id: `c-${missionId}-${crypto.randomUUID().slice(0, 6)}`,
+      missionId,
+      ...payload,
+    };
+    mission.cards.push(card);
+    const { error: uErr } = await sb.from('core_missions').upsert(toDbMission(mission));
+    if (uErr) throw new Error(mapSupabaseError(uErr));
+    return card;
+  }
+
   const fb = getFirebaseServices();
   if (fb) {
     const snap = await fetchWorkspace();
@@ -1039,6 +1449,23 @@ export async function addMissionCard(
 }
 
 export async function deleteMissionCard(cardId: string): Promise<void> {
+  const sb = getSupabaseClient();
+  if (sb) {
+    const { data, error } = await sb.from('core_missions').select('*');
+    if (error) throw new Error(mapSupabaseError(error));
+    const missions = ((data || []) as DbCoreMissionRow[]).map(fromDbMission);
+    for (const mission of missions) {
+      const nextCards = mission.cards.filter((c) => c.id !== cardId);
+      if (nextCards.length !== mission.cards.length) {
+        const { error: uErr } = await sb
+          .from('core_missions')
+          .upsert(toDbMission({ ...mission, cards: nextCards }));
+        if (uErr) throw new Error(mapSupabaseError(uErr));
+      }
+    }
+    return;
+  }
+
   const fb = getFirebaseServices();
   if (fb) {
     const snap = await fetchWorkspace();
@@ -1077,6 +1504,13 @@ export async function deleteMissionCard(cardId: string): Promise<void> {
 export async function saveAllocationConfig(
   config: MissionAllocationConfig
 ): Promise<MissionAllocationConfig> {
+  const sb = getSupabaseClient();
+  if (sb) {
+    const { error } = await sb.from('app_settings').upsert({ id: 'allocationConfig', data: config });
+    if (error) throw new Error(mapSupabaseError(error));
+    return config;
+  }
+
   const fb = getFirebaseServices();
   if (fb) {
     await setDoc(doc(fb.db, 'settings', 'allocationConfig'), config);
@@ -1105,6 +1539,13 @@ export async function saveDailyAssignment(
     ...payload,
     updatedAt: new Date().toISOString(),
   };
+
+  const sb = getSupabaseClient();
+  if (sb) {
+    const { error } = await sb.from('daily_assignments').upsert(toDbAssignment(record));
+    if (error) throw new Error(mapSupabaseError(error));
+    return record;
+  }
 
   const fb = getFirebaseServices();
   if (fb) {
@@ -1140,6 +1581,13 @@ export async function saveDailyGrade(
     })),
     updatedAt: new Date().toISOString(),
   };
+
+  const sb = getSupabaseClient();
+  if (sb) {
+    const { error } = await sb.from('daily_grades').upsert(toDbGrade(record));
+    if (error) throw new Error(mapSupabaseError(error));
+    return record;
+  }
 
   const fb = getFirebaseServices();
   if (fb) {
