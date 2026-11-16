@@ -9,7 +9,23 @@
       "passwordHash": "1d0d80194e069c97fa762239526f3078644a6641aba5d363a6368333d91164ad24aa369c7e294eab578bf65bdc73ccc6561ac13a42ec6b88aa22935d796300d5"
     }
   ],
-  "sessions": [],
+  "sessions": [
+    {
+      "token": "3f589af0c0f64c3786f8cf009be7e1fb73eaf16e683d45bd07f9d3e25703524a",
+      "teacherId": "teacher-1",
+      "expiresAt": 1795451487884
+    },
+    {
+      "token": "35b1613c04566f11319dca9d3e2ad02877847b479d89f6af9627c47ebca0933b",
+      "teacherId": "teacher-1",
+      "expiresAt": 1795451547705
+    },
+    {
+      "token": "06f2e5d6378145356d1c0b0a662559bf1cc1e592f9c02293c0ffbf9a3e26b92f",
+      "teacherId": "teacher-1",
+      "expiresAt": 1795451563911
+    }
+  ],
   "classes": [
     {
       "id": "9/1",

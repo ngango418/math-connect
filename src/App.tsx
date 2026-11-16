@@ -278,16 +278,16 @@ export default function App() {
 
   return (
     <MotionConfig reducedMotion="user">
-      <div className="min-h-screen flex flex-col relative overflow-x-clip bg-gradient-to-br from-sky-50 via-amber-50/35 to-emerald-50/45 text-slate-900">
+      <div className="min-h-screen flex flex-col relative overflow-x-clip bg-gradient-to-br from-sky-100/75 via-amber-50/55 to-emerald-100/65 text-slate-900">
         {/* Ambient drifting educational backdrop shapes (no-print, GPU-only) */}
         <div aria-hidden="true" className="fixed inset-0 pointer-events-none overflow-hidden no-print -z-0">
-          <div className="absolute -top-24 -left-24 w-72 h-72 rounded-full bg-sky-200/35 blur-2xl animate-float-slow" />
-          <div className="absolute top-1/3 -right-24 w-80 h-80 rounded-full bg-amber-200/30 blur-2xl animate-float-delayed" />
-          <div className="absolute -bottom-24 left-1/3 w-72 h-72 rounded-full bg-emerald-200/30 blur-2xl animate-float-slow" />
+          <div className="absolute -top-24 -left-24 w-80 h-80 rounded-full bg-sky-300/35 blur-2xl animate-float-slow" />
+          <div className="absolute top-1/3 -right-24 w-88 h-88 rounded-full bg-amber-300/30 blur-2xl animate-float-delayed" />
+          <div className="absolute -bottom-24 left-1/3 w-80 h-80 rounded-full bg-emerald-300/30 blur-2xl animate-float-slow" />
         </div>
 
         {/* Top Bar Contract: Single-row, 3 zones */}
-        <header className="bg-white/90 backdrop-blur-md border-b border-slate-200/80 sticky top-0 z-40 no-print shadow-[0_2px_12px_-4px_rgba(15,23,42,0.06)]">
+        <header className="bg-white/92 backdrop-blur-md border-b border-sky-200/80 sticky top-0 z-40 no-print shadow-[0_2px_14px_-4px_rgba(14,165,233,0.12)]">
           <div className="max-w-7xl mx-auto px-3.5 sm:px-6 h-16 flex items-center justify-between gap-3 sm:gap-6">
             {/* Zone 1: Single-line Brand Wordmark */}
             <button
@@ -295,9 +295,9 @@ export default function App() {
               onClick={() => {
                 if (mode === 'teacher' && teacher) setActiveTab('missions');
               }}
-              className="inline-flex items-center gap-2 text-base sm:text-lg font-extrabold tracking-tight text-slate-900 whitespace-nowrap shrink-0 text-left"
+              className="inline-flex items-center gap-2.5 text-lg sm:text-xl font-extrabold tracking-tight text-slate-900 whitespace-nowrap shrink-0 text-left font-display"
             >
-              <span className="w-8 h-8 rounded-xl bg-gradient-to-br from-sky-500 via-blue-600 to-indigo-600 text-white inline-flex items-center justify-center shadow-sm shrink-0">
+              <span className="w-9 h-9 rounded-xl bg-gradient-to-br from-sky-500 via-blue-600 to-violet-600 text-white inline-flex items-center justify-center shadow-sm shrink-0">
                 <Sparkles className="w-4 h-4" />
               </span>
               <span>ClassQR Studio</span>
@@ -305,7 +305,7 @@ export default function App() {
 
             {/* Zone 2: Concise single-line nav links (Locked in student mode — no class/group switching) */}
             {mode === 'teacher' && teacher ? (
-              <nav className="hidden lg:flex items-center gap-6 text-sm font-semibold text-slate-600 overflow-x-auto">
+              <nav className="hidden lg:flex items-center gap-6 text-[15px] font-bold text-slate-600 overflow-x-auto">
                 {teacherNavLinks.map((link) => {
                   const isActive = activeTab === link.id;
                   return (
@@ -314,7 +314,7 @@ export default function App() {
                       type="button"
                       onClick={() => setActiveTab(link.id)}
                       className={`relative py-2 whitespace-nowrap shrink-0 transition-colors ${
-                        isActive ? 'text-blue-600' : 'hover:text-slate-900'
+                        isActive ? 'text-blue-700' : 'hover:text-slate-900'
                       }`}
                     >
                       {link.label}
@@ -322,7 +322,7 @@ export default function App() {
                         <motion.span
                           layoutId="teacher-nav-underline"
                           transition={{ type: 'spring', stiffness: 420, damping: 32 }}
-                          className="absolute inset-x-0 bottom-0 h-0.5 rounded-full bg-gradient-to-r from-sky-500 to-blue-600"
+                          className="absolute inset-x-0 bottom-0 h-0.5 rounded-full bg-gradient-to-r from-sky-500 via-blue-600 to-violet-600"
                         />
                       )}
                     </button>

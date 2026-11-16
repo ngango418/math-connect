@@ -75,13 +75,24 @@ export interface DailyAssignmentRecord {
   updatedAt: string;
 }
 
+export interface RubricCriteriaScores {
+  participation: number; // Tham gia tích cực (1 | 1.5 | 2 | 2.5)
+  collaboration: number; // Hợp tác, phân công (1 | 1.5 | 2 | 2.5)
+  accuracy: number; // Kết quả chính xác (1 | 1.5 | 2 | 2.5)
+  creativity: number; // Trình bày sáng tạo (1 | 1.5 | 2 | 2.5)
+}
+
+export type PrivilegeCardType = 'NO_HOMEWORK' | 'SOS';
+
 export interface GroupGradeEntry {
   groupNumber: GroupNumber;
   baseScore: number; // Điểm giáo viên cho (0-10)
   bonusPoints: number; // Điểm cộng (+)
   penaltyPoints: number; // Điểm trừ (-)
-  finalScore: number; // = baseScore - penaltyPoints + bonusPoints
+  finalScore: number; // = baseScore - penaltyPoints + bonusPoints (tối đa 10)
   feedback: string;
+  criteria?: RubricCriteriaScores;
+  privilegeCard?: PrivilegeCardType | null;
 }
 
 export interface DailyGradeRecord {

@@ -181,9 +181,13 @@ async function startServer() {
       }));
 
     const targetDate = exactAssignment ? date : activeAssignment?.date || date;
-    const gradeRecord = db.grades.find(
-      (g) => g.classId === classId && g.date === targetDate && g.publishedToStudents
-    );
+    const gradeRecord =
+      db.grades.find(
+        (g) => g.classId === classId && g.date === date && g.publishedToStudents
+      ) ||
+      db.grades.find(
+        (g) => g.classId === classId && g.date === targetDate && g.publishedToStudents
+      );
 
     const publishedGrade = gradeRecord?.entries.find((e) => e.groupNumber === groupNumber) || null;
 

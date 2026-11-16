@@ -1,20 +1,26 @@
 @import "tailwindcss";
 
 @theme {
-  --font-display: "Bricolage Grotesque", "Plus Jakarta Sans", system-ui, -apple-system, sans-serif;
-  --font-sans: "Plus Jakarta Sans", system-ui, -apple-system, sans-serif;
+  --font-display: "Baloo 2", "Be Vietnam Pro", system-ui, -apple-system, sans-serif;
+  --font-sans: "Be Vietnam Pro", system-ui, -apple-system, sans-serif;
   --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, monospace;
 }
 
 @layer base {
+  html {
+    font-size: 16px;
+  }
+
   body {
     font-family: var(--font-sans);
-    background-color: #f4f9ff;
+    background-color: #f0f7ff;
     color: #0f172a;
+    line-height: 1.55;
   }
 
   h1, h2, h3, h4, .font-display {
     font-family: var(--font-display);
+    letter-spacing: -0.01em;
   }
 }
 

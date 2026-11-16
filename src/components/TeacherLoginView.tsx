@@ -74,16 +74,16 @@ export function TeacherLoginView({ onSuccess, onSwitchToStudent }: TeacherLoginV
           />
 
           <div className="relative space-y-4">
-            <div className="inline-flex items-center gap-2 text-xs font-bold text-amber-200">
+            <div className="inline-flex items-center gap-2 text-sm font-bold text-amber-200">
               <Lock className="w-4 h-4" />
               Không gian Giáo viên Chủ nhiệm
             </div>
 
-            <h1 className="text-2xl sm:text-3xl font-extrabold tracking-tight leading-tight text-balance">
+            <h1 className="text-2xl sm:text-4xl font-extrabold tracking-tight leading-tight text-balance">
               Biến mỗi tiết học thành hành trình khám phá đầy hứng khởi
             </h1>
 
-            <p className="text-sm text-sky-100 leading-relaxed">
+            <p className="text-sm sm:text-base text-sky-50 leading-relaxed">
               Quản lý lớp học trực quan: nhập danh sách bằng AI đọc file Excel, chia 4 Tổ thành 8 Nhóm
               ngẫu nhiên cân bằng tổng điểm, phát thẻ nhiệm vụ qua mã QR riêng biệt và chấm điểm cộng/trừ cuối buổi.
             </p>

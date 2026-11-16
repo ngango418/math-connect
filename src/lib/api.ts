@@ -628,9 +628,13 @@ function buildPublicMissionResponse(
     }));
 
   const targetDate = exactAssignment ? date : activeAssignment?.date || date;
-  const gradeRecord = grades.find(
-    (g) => g.classId === classId && g.date === targetDate && g.publishedToStudents
-  );
+  const gradeRecord =
+    grades.find(
+      (g) => g.classId === classId && g.date === date && g.publishedToStudents
+    ) ||
+    grades.find(
+      (g) => g.classId === classId && g.date === targetDate && g.publishedToStudents
+    );
   const publishedGrade = gradeRecord?.entries.find((e) => e.groupNumber === groupNumber) || null;
 
   return {

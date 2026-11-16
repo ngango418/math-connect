@@ -168,6 +168,12 @@ function clampSessionScore(base: number, penalty: number, bonus: number): number
   return Math.min(10, Math.max(0, Number((base - penalty + bonus).toFixed(2))));
 }
 
+function formatPrivilegeLabel(card?: 'NO_HOMEWORK' | 'SOS' | null): string {
+  if (card === 'NO_HOMEWORK') return 'No Homework';
+  if (card === 'SOS') return 'SOS';
+  return '';
+}
+
 /**
  * Xuất Bảng tính Điểm buổi học: Danh sách TẤT CẢ học sinh phân theo từng Nhóm (1 -> 8),
  * điểm của từng học sinh hiển thị trực tiếp trên hàng của em đó (tối đa 10 điểm).
@@ -201,10 +207,15 @@ export function exportSessionGradebookToExcel(
         To: `Tổ ${stu.to}`,
         Nhom: `Nhóm ${stu.groupNumber}`,
         VaiTro: stu.isLeader ? 'Nhóm trưởng' : 'Thành viên',
+        ThamGiaTichCuc: groupEntry?.criteria?.participation ?? '',
+        HopTacPhanCong: groupEntry?.criteria?.collaboration ?? '',
+        KetQuaChinhXac: groupEntry?.criteria?.accuracy ?? '',
+        TrinhBaySangTao: groupEntry?.criteria?.creativity ?? '',
         DiemCho: base,
         DiemCong: bonus,
         DiemTru: penalty,
         DiemTong_ToiDa10: total,
+        TheDacQuyen: formatPrivilegeLabel(groupEntry?.privilegeCard),
         NhanXet: groupEntry?.feedback || '',
         NgayHoc: record.date,
       };
@@ -221,10 +232,15 @@ export function exportSessionGradebookToExcel(
     { wch: 8 },
     { wch: 10 },
     { wch: 14 },
+    { wch: 15 },
+    { wch: 15 },
+    { wch: 15 },
+    { wch: 15 },
     { wch: 10 },
     { wch: 10 },
     { wch: 10 },
     { wch: 16 },
+    { wch: 15 },
     { wch: 24 },
     { wch: 12 },
   ];
@@ -265,10 +281,15 @@ export function exportAllGradesToExcel(
           To: `Tổ ${stu.to}`,
           Nhom: `Nhóm ${stu.groupNumber}`,
           VaiTro: stu.isLeader ? 'Nhóm trưởng' : 'Thành viên',
+          ThamGiaTichCuc: entry?.criteria?.participation ?? '',
+          HopTacPhanCong: entry?.criteria?.collaboration ?? '',
+          KetQuaChinhXac: entry?.criteria?.accuracy ?? '',
+          TrinhBaySangTao: entry?.criteria?.creativity ?? '',
           DiemCho: base,
           DiemCong: bonus,
           DiemTru: penalty,
           DiemTong_ToiDa10: clampSessionScore(base, penalty, bonus),
+          TheDacQuyen: formatPrivilegeLabel(entry?.privilegeCard),
           NhanXet: entry?.feedback || '',
         });
       });
@@ -288,6 +309,7 @@ export function exportAllGradesToExcel(
             entry.penaltyPoints,
             entry.bonusPoints
           ),
+          TheDacQuyen: formatPrivilegeLabel(entry.privilegeCard),
           NhanXet: entry.feedback,
         });
       }
