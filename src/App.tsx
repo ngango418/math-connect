@@ -41,12 +41,12 @@ function parseInitialParams(): {
   date: string;
 } {
   if (typeof window === 'undefined') {
-    return { mode: 'teacher', classId: '9/23', group: 1, date: getTodayDateString() };
+    return { mode: 'teacher', classId: '9/1', group: 1, date: getTodayDateString() };
   }
   const params = new URLSearchParams(window.location.search);
   const view = params.get('view');
-  const rawClass = (params.get('class') || '9/23').trim();
-  const classId: ClassId = rawClass || '9/23';
+  const rawClass = (params.get('class') || '9/1').trim();
+  const classId: ClassId = rawClass || '9/1';
   const rawGroup = Number(params.get('group') || 1);
   const group: GroupNumber =
     rawGroup >= 1 && rawGroup <= 8 ? (rawGroup as GroupNumber) : 1;
@@ -432,7 +432,7 @@ export default function App() {
             </div>
 
             {activeTab === 'firebase' ? (
-              <FirebaseGuideTab />
+              <FirebaseGuideTab onRefreshWorkspace={loadWorkspace} />
             ) : workspaceLoading && !workspace ? (
               <div className="bg-white border border-slate-200 rounded-2xl p-12 text-center text-sm text-slate-500">
                 Đang tải dữ liệu lớp học...

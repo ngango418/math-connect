@@ -87,8 +87,18 @@ export function loadDb(): DatabaseSchema {
   try {
     const raw = fs.readFileSync(DB_PATH, 'utf-8');
     const parsed = JSON.parse(raw) as Partial<DatabaseSchema>;
-    // Migrate older v1 schema cleanly if needed
-    if (!parsed.classes || !parsed.allocationConfig || !parsed.students?.[0] || parsed.students[0].score === undefined) {
+    // Migrate older demo seed cleanly if needed while keeping teacher accounts
+    const isOldThreeClassDemo =
+      parsed.classes?.length === 3 &&
+      parsed.classes[0]?.id === '9/23' &&
+      (parsed.students?.length || 0) <= 50;
+    if (
+      !parsed.classes ||
+      !parsed.allocationConfig ||
+      !parsed.students?.[0] ||
+      parsed.students[0].score === undefined ||
+      isOldThreeClassDemo
+    ) {
       cachedDb = createInitialDb();
       if (parsed.teachers && parsed.teachers.length > 0) {
         cachedDb.teachers = parsed.teachers;

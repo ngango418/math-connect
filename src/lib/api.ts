@@ -33,7 +33,7 @@ import { createClientSeedSnapshot, createDefaultAllocationConfig } from './defau
 import { getFirebaseServices, isFirebaseEnvConfigured } from './firebaseClient.ts';
 
 const TOKEN_STORAGE_KEY = 'classqr_teacher_token';
-const LOCAL_SNAPSHOT_KEY = 'classqr_local_snapshot_v2';
+const LOCAL_SNAPSHOT_KEY = 'classqr_local_snapshot_v3';
 const LOCAL_TEACHERS_KEY = 'classqr_local_teachers_v1';
 const LOCAL_SESSION_KEY = 'classqr_local_session_v1';
 
@@ -93,7 +93,7 @@ function normalizeStudentRecord(raw: Partial<Student>): Student {
     studentCode: raw.studentCode || '',
     name: raw.name || '',
     birthDate: raw.birthDate || '',
-    classId: raw.classId || '9/23',
+    classId: raw.classId || '9/1',
     to: Math.min(4, Math.max(1, Number(raw.to) || 1)),
     groupNumber: normalizeGroupNumber(raw.groupNumber),
     isLeader: Boolean(raw.isLeader),
@@ -135,7 +135,7 @@ function makeDocSafeId(raw: string): string {
 
 function normalizeClassId(raw: string): string {
   const c = (raw || '').trim();
-  return c || '9/23';
+  return c || '9/1';
 }
 
 function normalizeGroupNumber(raw: unknown): GroupNumber {
@@ -199,6 +199,29 @@ function mapFirestoreError(err: unknown): string {
   return msg;
 }
 
+type BatchOp =
+  | { type: 'set'; ref: ReturnType<typeof doc>; data: unknown }
+  | { type: 'delete'; ref: ReturnType<typeof doc> };
+
+async function commitChunkedBatch(
+  db: NonNullable<ReturnType<typeof getFirebaseServices>>['db'],
+  ops: BatchOp[]
+): Promise<void> {
+  const CHUNK_SIZE = 400;
+  for (let i = 0; i < ops.length; i += CHUNK_SIZE) {
+    const chunk = ops.slice(i, i + CHUNK_SIZE);
+    const batch = writeBatch(db);
+    for (const op of chunk) {
+      if (op.type === 'set') {
+        batch.set(op.ref, op.data);
+      } else {
+        batch.delete(op.ref);
+      }
+    }
+    await batch.commit();
+  }
+}
+
 export async function initializeFirestoreDatabase(forceReset = false): Promise<{
   created: boolean;
   counts: { missions: number; students: number; assignments: number; grades: number };
@@ -230,27 +253,40 @@ export async function initializeFirestoreDatabase(forceReset = false): Promise<{
       };
     }
 
+    const ops: BatchOp[] = [];
+    if (forceReset) {
+      const [oldStudents, oldClasses, oldAssign, oldGrades] = await Promise.all([
+        getDocs(collection(fb.db, 'students')),
+        getDocs(collection(fb.db, 'classes')),
+        getDocs(collection(fb.db, 'dailyAssignments')),
+        getDocs(collection(fb.db, 'dailyGrades')),
+      ]);
+      for (const d of oldStudents.docs) ops.push({ type: 'delete', ref: d.ref });
+      for (const d of oldClasses.docs) ops.push({ type: 'delete', ref: d.ref });
+      for (const d of oldAssign.docs) ops.push({ type: 'delete', ref: d.ref });
+      for (const d of oldGrades.docs) ops.push({ type: 'delete', ref: d.ref });
+    }
+
     const seed = createClientSeedSnapshot();
-    const batch = writeBatch(fb.db);
 
     for (const c of seed.classes) {
-      batch.set(doc(fb.db, 'classes', makeDocSafeId(c.id)), c);
+      ops.push({ type: 'set', ref: doc(fb.db, 'classes', makeDocSafeId(c.id)), data: c });
     }
     for (const m of seed.coreMissions) {
-      batch.set(doc(fb.db, 'coreMissions', String(m.id)), m);
+      ops.push({ type: 'set', ref: doc(fb.db, 'coreMissions', String(m.id)), data: m });
     }
-    batch.set(doc(fb.db, 'settings', 'allocationConfig'), seed.allocationConfig);
+    ops.push({ type: 'set', ref: doc(fb.db, 'settings', 'allocationConfig'), data: seed.allocationConfig });
 
     for (const s of seed.students) {
-      batch.set(doc(fb.db, 'students', s.id), s);
+      ops.push({ type: 'set', ref: doc(fb.db, 'students', s.id), data: s });
     }
     for (const a of seed.assignments) {
-      batch.set(doc(fb.db, 'dailyAssignments', makeDocSafeId(a.id)), a);
+      ops.push({ type: 'set', ref: doc(fb.db, 'dailyAssignments', makeDocSafeId(a.id)), data: a });
     }
     for (const g of seed.grades) {
-      batch.set(doc(fb.db, 'dailyGrades', makeDocSafeId(g.id)), g);
+      ops.push({ type: 'set', ref: doc(fb.db, 'dailyGrades', makeDocSafeId(g.id)), data: g });
     }
-    await batch.commit();
+    await commitChunkedBatch(fb.db, ops);
 
     return {
       created: true,
@@ -475,13 +511,19 @@ export async function resetTeacherPassword(email: string): Promise<void> {
   await sendPasswordResetEmail(fb.auth, email.trim());
 }
 
+function sortClassroomsNaturally(list: ClassroomInfo[]): ClassroomInfo[] {
+  return [...list].sort((a, b) =>
+    a.name.localeCompare(b.name, 'vi', { numeric: true, sensitivity: 'base' })
+  );
+}
+
 export async function fetchPublicClasses(): Promise<ClassroomInfo[]> {
   const fb = getFirebaseServices();
   if (fb) {
     try {
       const snap = await getDocs(collection(fb.db, 'classes'));
       const list = snap.docs.map((d) => d.data() as ClassroomInfo);
-      if (list.length > 0) return list;
+      if (list.length > 0) return sortClassroomsNaturally(list);
     } catch {
       // fall through to default
     }
@@ -633,8 +675,10 @@ export async function fetchWorkspace(): Promise<WorkspaceSnapshot> {
     ]);
     const allocDoc = settingsSnap.docs.find((d) => d.id === 'allocationConfig');
     return {
-      classes: classesSnap.docs.map((d) => d.data() as ClassroomInfo),
-      students: studentsSnap.docs.map((d) => normalizeStudentRecord(d.data() as Student)),
+      classes: sortClassroomsNaturally(classesSnap.docs.map((d) => d.data() as ClassroomInfo)),
+      students: studentsSnap.docs
+        .map((d) => normalizeStudentRecord(d.data() as Student))
+        .sort((a, b) => a.studentCode.localeCompare(b.studentCode, 'vi', { numeric: true })),
       coreMissions: missionsSnap.docs
         .map((d) => d.data() as CoreMission)
         .sort((a, b) => a.id - b.id),
@@ -809,21 +853,21 @@ export async function bulkStudentsAction(payload: {
       snap.classes,
       payload
     );
-    const batch = writeBatch(fb.db);
+    const ops: BatchOp[] = [];
     const existingIds = new Set(snap.students.map((s) => s.id));
     const nextIds = new Set(updated.map((s) => s.id));
     for (const oldId of existingIds) {
       if (!nextIds.has(oldId)) {
-        batch.delete(doc(fb.db, 'students', oldId));
+        ops.push({ type: 'delete', ref: doc(fb.db, 'students', oldId) });
       }
     }
     for (const stu of updated) {
-      batch.set(doc(fb.db, 'students', stu.id), stu);
+      ops.push({ type: 'set', ref: doc(fb.db, 'students', stu.id), data: stu });
     }
     for (const cls of nextClasses) {
-      batch.set(doc(fb.db, 'classes', makeDocSafeId(cls.id)), cls);
+      ops.push({ type: 'set', ref: doc(fb.db, 'classes', makeDocSafeId(cls.id)), data: cls });
     }
-    await batch.commit();
+    await commitChunkedBatch(fb.db, ops);
     return { students: updated, classes: nextClasses };
   }
 
@@ -882,7 +926,7 @@ function applyBulkStudentTransform(
 
   for (const item of payload.students) {
     if (!item.name || !item.name.trim()) continue;
-    const cls = normalizeClassId(item.classId || targetClass || classes[0]?.id || '9/23');
+    const cls = normalizeClassId(item.classId || targetClass || classes[0]?.id || '9/1');
     if (!classes.some((c) => c.id === cls)) {
       classes.push({ id: cls, name: cls, createdAt: new Date().toISOString().slice(0, 10) });
     }

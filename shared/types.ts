@@ -10,7 +10,18 @@ export type GroupNumber = 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8;
 
 export const GROUP_NUMBERS: GroupNumber[] = [1, 2, 3, 4, 5, 6, 7, 8];
 
-export const DEFAULT_CLASS_NAMES: string[] = ['9/23', '9/26', '9/28'];
+export const DEFAULT_CLASS_NAMES: string[] = [
+  '9/1',
+  '9/2',
+  '9/3',
+  '9/4',
+  '9/5',
+  '9/6',
+  '9/7',
+  '9/8',
+  '9/9',
+  '9/10',
+];
 
 export interface Student {
   id: string;

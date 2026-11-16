@@ -1,13 +1,14 @@
-import type {
-  ClassroomInfo,
-  CoreMission,
-  DailyAssignmentRecord,
-  DailyGradeRecord,
-  GroupDailyPlan,
-  GroupNumber,
-  MissionAllocationConfig,
-  Student,
-  WorkspaceSnapshot,
+import {
+  DEFAULT_CLASS_NAMES,
+  type ClassroomInfo,
+  type CoreMission,
+  type DailyAssignmentRecord,
+  type DailyGradeRecord,
+  type GroupDailyPlan,
+  type GroupNumber,
+  type MissionAllocationConfig,
+  type Student,
+  type WorkspaceSnapshot,
 } from '../../shared/types.ts';
 
 function getTodayDateString(): string {
@@ -47,15 +48,101 @@ export function createEmptyEightGroups(): Record<GroupNumber, GroupDailyPlan> {
   };
 }
 
+const LAST_NAMES = [
+  'Nguyễn', 'Trần', 'Lê', 'Phạm', 'Hoàng',
+  'Huỳnh', 'Phan', 'Vũ', 'Võ', 'Đặng',
+  'Bùi', 'Đỗ', 'Hồ', 'Ngô', 'Dương',
+  'Lý', 'Đinh', 'Mai', 'Tạ', 'Vương',
+];
+
+const MIDDLE_NAMES = [
+  'Minh', 'Hoàng', 'Thảo', 'Quốc', 'Gia',
+  'Đức', 'Khánh', 'Nhật', 'Phương', 'Tuấn',
+  'Ngọc', 'Thanh', 'Hải', 'Bảo', 'Anh',
+  'Tiến', 'Thùy', 'Văn', 'Yến', 'Đình',
+];
+
+const FIRST_NAMES = [
+  'An', 'Anh', 'Bình', 'Chi', 'Dũng',
+  'Dương', 'Đăng', 'Đạt', 'Hà', 'Hân',
+  'Hiếu', 'Huy', 'Hưng', 'Khang', 'Khánh',
+  'Khôi', 'Linh', 'Long', 'Minh', 'My',
+  'Nam', 'Nghi', 'Ngọc', 'Nhi', 'Phong',
+  'Phúc', 'Quân', 'Quỳnh', 'Sơn', 'Tâm',
+  'Thư', 'Trang', 'Trâm', 'Trúc', 'Tuấn',
+  'Tùng', 'Uyên', 'Vinh', 'Vy', 'Yến',
+];
+
+const SCORE_PATTERN = [9.5, 8.0, 7.5, 6.0, 5.5, 9.0, 8.5, 7.0, 6.5, 5.0];
+
+function generateSeedStudentsForTenClasses(): Student[] {
+  const students: Student[] = [];
+  const usedFullNames = new Set<string>();
+  let globalIndex = 0;
+
+  DEFAULT_CLASS_NAMES.forEach((classId, classIdx) => {
+    const cleanCode = classId.replace('/', '');
+
+    // 40 học sinh mỗi lớp: chia đều vào 4 Tổ (10 HS/Tổ) -> 8 Nhóm (5 HS/Nhóm)
+    for (let i = 0; i < 40; i++) {
+      // Sinh họ tên không trùng lặp cho toàn bộ 400 học sinh
+      let fullName = '';
+      let attempt = 0;
+      do {
+        const seedVal = globalIndex * 17 + attempt * 7 + classIdx * 13;
+        const ln = LAST_NAMES[seedVal % LAST_NAMES.length];
+        const mn = MIDDLE_NAMES[(Math.floor(seedVal / 3) + i) % MIDDLE_NAMES.length];
+        const fn = FIRST_NAMES[(seedVal + i * 3 + classIdx * 5) % FIRST_NAMES.length];
+        fullName = `${ln} ${mn} ${fn}`;
+        attempt++;
+      } while (usedFullNames.has(fullName));
+      usedFullNames.add(fullName);
+
+      // Ngày sinh khác nhau trong năm 2012 (Khối 9)
+      const day = ((globalIndex * 5 + i * 3 + classIdx) % 28) + 1;
+      const month = ((globalIndex + i * 7 + classIdx * 2) % 12) + 1;
+      const birthDate = `${String(day).padStart(2, '0')}/${String(month).padStart(2, '0')}/2012`;
+
+      // Tổ 1..4 (mỗi tổ 10 HS), Nhóm 1..8 (mỗi nhóm 5 HS)
+      const to = Math.floor(i / 10) + 1;
+      const groupNumber = (Math.floor(i / 5) + 1) as GroupNumber;
+      const isLeader = i % 5 === 0; // Mỗi nhóm có 1 Nhóm trưởng
+
+      // Điểm đánh giá năng lực 1-10 đa dạng
+      const baseScore = SCORE_PATTERN[(i + classIdx * 3) % SCORE_PATTERN.length];
+      const score = isLeader
+        ? Math.min(10, Math.max(8, Number((baseScore + 0.5).toFixed(1))))
+        : Math.max(4, Math.min(9.5, baseScore));
+
+      students.push({
+        id: `stu-${cleanCode}-${i + 1}`,
+        studentCode: `${cleanCode}-${String(i + 1).padStart(2, '0')}`,
+        name: fullName,
+        birthDate,
+        classId,
+        to,
+        groupNumber,
+        isLeader,
+        score,
+        note: isLeader ? 'Nhóm trưởng phụ trách điều phối' : '',
+      });
+
+      globalIndex++;
+    }
+  });
+
+  return students;
+}
+
 export function createClientSeedSnapshot(): WorkspaceSnapshot {
   const today = getTodayDateString();
   const yesterday = getYesterdayDateString();
 
-  const classes: ClassroomInfo[] = [
-    { id: '9/23', name: '9/23', createdAt: today },
-    { id: '9/26', name: '9/26', createdAt: today },
-    { id: '9/28', name: '9/28', createdAt: today },
-  ];
+  const classes: ClassroomInfo[] = DEFAULT_CLASS_NAMES.map((cls) => ({
+    id: cls,
+    name: cls,
+    createdAt: today,
+  }));
 
   const coreMissions: CoreMission[] = [
     {
@@ -162,71 +249,7 @@ export function createClientSeedSnapshot(): WorkspaceSnapshot {
     },
   ];
 
-  // 4 Tổ x 2 Nhóm = 8 Nhóm cho lớp 9/23 (mỗi tổ 4 HS ví dụ)
-  const rosters: Record<
-    string,
-    Array<{ name: string; birthDate: string; to: number; groupNumber: GroupNumber; isLeader: boolean; score: number }>
-  > = {
-    '9/23': [
-      { name: 'Nguyễn Minh Anh', birthDate: '12/03/2012', to: 1, groupNumber: 1, isLeader: true, score: 9 },
-      { name: 'Trần Hoàng Bảo', birthDate: '25/07/2012', to: 1, groupNumber: 1, isLeader: false, score: 6 },
-      { name: 'Lê Thảo Chi', birthDate: '08/11/2012', to: 1, groupNumber: 2, isLeader: true, score: 8 },
-      { name: 'Phạm Quốc Dũng', birthDate: '19/01/2012', to: 1, groupNumber: 2, isLeader: false, score: 7 },
-      { name: 'Hoàng Gia Hân', birthDate: '04/05/2012', to: 2, groupNumber: 3, isLeader: true, score: 9 },
-      { name: 'Vũ Đức Khang', birthDate: '14/09/2012', to: 2, groupNumber: 3, isLeader: false, score: 5 },
-      { name: 'Đặng Khánh Linh', birthDate: '22/06/2012', to: 2, groupNumber: 4, isLeader: true, score: 8 },
-      { name: 'Bùi Nhật Minh', birthDate: '30/10/2012', to: 2, groupNumber: 4, isLeader: false, score: 6 },
-      { name: 'Ngô Phương Nghi', birthDate: '17/02/2012', to: 3, groupNumber: 5, isLeader: true, score: 10 },
-      { name: 'Đỗ Tuấn Phong', birthDate: '09/08/2012', to: 3, groupNumber: 5, isLeader: false, score: 5 },
-      { name: 'Dương Ngọc Quỳnh', birthDate: '27/12/2012', to: 3, groupNumber: 6, isLeader: true, score: 8 },
-      { name: 'Phan Thanh Sơn', birthDate: '11/04/2012', to: 3, groupNumber: 6, isLeader: false, score: 7 },
-      { name: 'Võ Hải Đăng', birthDate: '03/09/2012', to: 4, groupNumber: 7, isLeader: true, score: 9 },
-      { name: 'Nguyễn Ngọc Hà', birthDate: '15/11/2012', to: 4, groupNumber: 7, isLeader: false, score: 6 },
-      { name: 'Trịnh Gia Huy', birthDate: '21/05/2012', to: 4, groupNumber: 8, isLeader: true, score: 8 },
-      { name: 'Lý Bảo Ngọc', birthDate: '06/07/2012', to: 4, groupNumber: 8, isLeader: false, score: 7 },
-    ],
-    '9/26': [
-      { name: 'Mai Anh Quân', birthDate: '18/03/2012', to: 1, groupNumber: 1, isLeader: true, score: 9 },
-      { name: 'Tạ Minh Tâm', birthDate: '02/10/2012', to: 1, groupNumber: 1, isLeader: false, score: 6 },
-      { name: 'Hồ Thảo Vy', birthDate: '14/06/2012', to: 1, groupNumber: 2, isLeader: true, score: 8 },
-      { name: 'Chu Quang Vinh', birthDate: '29/01/2012', to: 1, groupNumber: 2, isLeader: false, score: 7 },
-      { name: 'Đinh Lan Anh', birthDate: '07/08/2012', to: 2, groupNumber: 3, isLeader: true, score: 9 },
-      { name: 'Kiều Tiến Đạt', birthDate: '20/12/2012', to: 2, groupNumber: 4, isLeader: true, score: 8 },
-      { name: 'Lương Khánh An', birthDate: '10/04/2012', to: 3, groupNumber: 5, isLeader: true, score: 8 },
-      { name: 'Nguyễn Hữu Bình', birthDate: '23/09/2012', to: 3, groupNumber: 6, isLeader: true, score: 7 },
-      { name: 'Phạm Thùy Dương', birthDate: '16/05/2012', to: 4, groupNumber: 7, isLeader: true, score: 9 },
-      { name: 'Trần Văn Hiếu', birthDate: '05/11/2012', to: 4, groupNumber: 8, isLeader: true, score: 7 },
-    ],
-    '9/28': [
-      { name: 'Đoàn Bảo Khánh', birthDate: '13/02/2012', to: 1, groupNumber: 1, isLeader: true, score: 9 },
-      { name: 'Nguyễn Yến Nhi', birthDate: '28/07/2012', to: 1, groupNumber: 2, isLeader: true, score: 8 },
-      { name: 'Vương Đình Phúc', birthDate: '09/09/2012', to: 2, groupNumber: 3, isLeader: true, score: 8 },
-      { name: 'Lê Bảo Trâm', birthDate: '19/04/2012', to: 2, groupNumber: 4, isLeader: true, score: 7 },
-      { name: 'Nguyễn Anh Tuấn', birthDate: '01/12/2012', to: 3, groupNumber: 5, isLeader: true, score: 9 },
-      { name: 'Trần Minh Uyên', birthDate: '24/08/2012', to: 3, groupNumber: 6, isLeader: true, score: 8 },
-      { name: 'Hà Minh Khôi', birthDate: '17/05/2012', to: 4, groupNumber: 7, isLeader: true, score: 8 },
-      { name: 'Bùi Thanh Trúc', birthDate: '06/03/2012', to: 4, groupNumber: 8, isLeader: true, score: 7 },
-    ],
-  };
-
-  const students: Student[] = [];
-  Object.keys(rosters).forEach((classId) => {
-    const cleanCode = classId.replace('/', '');
-    rosters[classId].forEach((entry, idx) => {
-      students.push({
-        id: `stu-${cleanCode}-${idx + 1}`,
-        studentCode: `${cleanCode}-${String(idx + 1).padStart(2, '0')}`,
-        name: entry.name,
-        birthDate: entry.birthDate,
-        classId,
-        to: entry.to,
-        groupNumber: entry.groupNumber,
-        isLeader: entry.isLeader,
-        score: entry.score,
-        note: '',
-      });
-    });
-  });
+  const students = generateSeedStudentsForTenClasses();
 
   const assignments: DailyAssignmentRecord[] = classes.map((cls) => ({
     id: `${cls.id}_${today}`,
@@ -248,10 +271,10 @@ export function createClientSeedSnapshot(): WorkspaceSnapshot {
 
   const grades: DailyGradeRecord[] = [
     {
-      id: `9/23_${yesterday}`,
-      classId: '9/23',
+      id: `9/1_${yesterday}`,
+      classId: '9/1',
       date: yesterday,
-      lessonTopic: `Buổi học ngày ${yesterday} — Lớp 9/23`,
+      lessonTopic: `Buổi học ngày ${yesterday} — Lớp 9/1`,
       publishedToStudents: true,
       updatedAt: new Date().toISOString(),
       entries: [

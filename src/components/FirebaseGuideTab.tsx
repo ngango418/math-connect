@@ -52,7 +52,11 @@ VITE_FIREBASE_STORAGE_BUCKET=ten-du-an.firebasestorage.app
 VITE_FIREBASE_MESSAGING_SENDER_ID=1234567890
 VITE_FIREBASE_APP_ID=1:1234567890:web:abcdef`;
 
-export function FirebaseGuideTab() {
+interface FirebaseGuideTabProps {
+  onRefreshWorkspace?: () => Promise<void>;
+}
+
+export function FirebaseGuideTab({ onRefreshWorkspace }: FirebaseGuideTabProps) {
   const [copiedKey, setCopiedKey] = useState<string>('');
   const [dbInitLoading, setDbInitLoading] = useState(false);
   const [dbInitResult, setDbInitResult] = useState<string>('');
@@ -73,6 +77,9 @@ export function FirebaseGuideTab() {
     setDbInitError('');
     try {
       const res = await initializeFirestoreDatabase(forceReset);
+      if (onRefreshWorkspace) {
+        await onRefreshWorkspace();
+      }
       setDbInitResult(
         `${res.created ? 'Đã khởi tạo mới' : 'Database đã sẵn sàng'} trên Firestore (${projectId}): ${res.counts.missions} nhiệm vụ cứng · ${res.counts.students} học sinh · ${res.counts.assignments} phân công · ${res.counts.grades} bảng điểm.`
       );
@@ -120,7 +127,7 @@ export function FirebaseGuideTab() {
                 className="inline-flex items-center gap-2 px-3.5 py-2 text-xs sm:text-sm font-medium text-slate-700 bg-slate-100 hover:bg-slate-200 disabled:opacity-50 rounded-lg transition-colors"
               >
                 <RefreshCw className="w-4 h-4" />
-                Nạp lại dữ liệu mẫu mặc định
+                Nạp lại dữ liệu mẫu 10 lớp (40 HS/lớp)
               </button>
             </div>
             {dbInitResult && (
