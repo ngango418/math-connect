@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react';
+import { motion } from 'motion/react';
 import { Check, Crown, Scale, Shuffle, Sparkles, UserPlus, Users } from 'lucide-react';
 import {
   GROUP_NUMBERS,
@@ -12,6 +13,7 @@ import {
   type ScoreGroupBucket,
   type TwoGroupScoreSplitResult,
 } from '../lib/balancedRandom.ts';
+import { GROUP_THEMES } from '../lib/themePalette.ts';
 
 interface SquadSplitTabProps {
   classId: ClassId;
@@ -38,6 +40,7 @@ export function SquadSplitTab({ classId, students, onRefreshWorkspace }: SquadSp
   const [targetGroupMapping, setTargetGroupMapping] = useState<Record<string, GroupNumber>>({});
   const [saving, setSaving] = useState(false);
   const [statusMsg, setStatusMsg] = useState('');
+  const [splitWave, setSplitWave] = useState(0);
 
   const studentsInSelectedTo = classStudents.filter((s) => s.to === selectedTo);
   const studentsOutsideSelectedTo = classStudents.filter((s) => s.to !== selectedTo);
@@ -80,6 +83,7 @@ export function SquadSplitTab({ classId, students, onRefreshWorkspace }: SquadSp
     const members = classStudents.filter((s) => s.to === toNum);
     const res = splitToIntoTwoEqualSumGroups(toNum, members);
     setSplitResults((prev) => ({ ...prev, [toNum]: res }));
+    setSplitWave((w) => w + 1);
     setTargetGroupMapping((prev) => ({
       ...prev,
       [`${toNum}-A`]: res.groupA.targetGroupNumber,
@@ -102,6 +106,7 @@ export function SquadSplitTab({ classId, students, onRefreshWorkspace }: SquadSp
       nextMap[`${toNum}-B`] = res.groupB.targetGroupNumber;
     }
     setSplitResults(nextResults);
+    setSplitWave((w) => w + 1);
     setTargetGroupMapping(nextMap);
     setStatusMsg(
       `Đã chia ngẫu nhiên cả 4 Tổ của Lớp ${classId} thành 8 nhóm có tổng điểm đánh giá cân bằng!`
@@ -148,18 +153,25 @@ export function SquadSplitTab({ classId, students, onRefreshWorkspace }: SquadSp
 
   const renderBucketCard = (toNum: number, sideKey: 'A' | 'B', bucket: ScoreGroupBucket) => {
     const mappedGroup = targetGroupMapping[`${toNum}-${sideKey}`] || bucket.targetGroupNumber;
+    const teamTheme = GROUP_THEMES[mappedGroup] || GROUP_THEMES[1];
     return (
-      <div className="bg-slate-50 border border-slate-200 rounded-xl p-4">
-        <div className="flex items-center justify-between gap-2 mb-2">
+      <motion.div
+        key={`${splitWave}-${toNum}-${sideKey}`}
+        initial={{ opacity: 0, x: sideKey === 'A' ? -14 : 14, scale: 0.96 }}
+        animate={{ opacity: 1, x: 0, scale: 1 }}
+        transition={{ type: 'spring', stiffness: 300, damping: 24 }}
+        className={`${teamTheme.softBg} border ${teamTheme.border} rounded-2xl overflow-hidden`}
+      >
+        <div className={`px-4 py-3 bg-gradient-to-r ${teamTheme.gradientHeader} text-white flex items-center justify-between gap-2`}>
           <div>
-            <h4 className="text-sm font-bold text-slate-900">
-              Nhóm {mappedGroup}
+            <h4 className="text-sm font-extrabold">
+              Nhóm {mappedGroup} · {teamTheme.teamLabel}
             </h4>
-            <div className="text-xs font-mono tabular-nums text-slate-600 flex items-center gap-2 mt-0.5">
+            <div className="text-xs font-mono tabular-nums text-white/90 flex items-center gap-2 mt-0.5">
               <span>{bucket.count} HS</span>
               <span aria-hidden="true">·</span>
               <span>
-                Tổng điểm: <strong className="text-blue-700 text-sm">{bucket.totalScore}</strong>
+                Tổng: <strong className="text-amber-200">{bucket.totalScore}đ</strong>
               </span>
               <span aria-hidden="true">·</span>
               <span>TB: {bucket.avgScore}</span>
@@ -174,7 +186,7 @@ export function SquadSplitTab({ classId, students, onRefreshWorkspace }: SquadSp
                 [`${toNum}-${sideKey}`]: Number(e.target.value) as GroupNumber,
               }))
             }
-            className="px-2 py-1 text-xs font-semibold border border-slate-200 rounded-lg bg-white"
+            className="px-2 py-1 text-xs font-bold text-slate-900 border border-white/40 rounded-xl bg-white"
           >
             {GROUP_NUMBERS.map((g) => (
               <option key={g} value={g}>
@@ -184,24 +196,27 @@ export function SquadSplitTab({ classId, students, onRefreshWorkspace }: SquadSp
           </select>
         </div>
 
-        <div className="mt-3 pt-3 border-t border-slate-200 space-y-1.5">
+        <div className="p-4 space-y-1.5">
           {bucket.students.length === 0 ? (
             <div className="text-xs text-slate-400">Chưa có thành viên</div>
           ) : (
             bucket.students.map((s) => (
-              <div key={s.id} className="flex items-center justify-between text-xs">
-                <span className="font-medium text-slate-800 flex items-center gap-1 truncate">
+              <div
+                key={s.id}
+                className="flex items-center justify-between text-xs bg-white/80 px-2.5 py-1.5 rounded-xl border border-white"
+              >
+                <span className="font-semibold text-slate-800 flex items-center gap-1 truncate">
                   {s.name}
-                  {s.isLeader && <Crown className="w-3 h-3 text-amber-500 shrink-0" />}
+                  {s.isLeader && <Crown className="w-3.5 h-3.5 text-amber-500 shrink-0" />}
                 </span>
-                <span className="font-mono font-bold tabular-nums text-blue-700 shrink-0 ml-2">
+                <span className={`font-mono font-bold tabular-nums shrink-0 ml-2 ${teamTheme.textAccent}`}>
                   {s.score} đ
                 </span>
               </div>
             ))
           )}
         </div>
-      </div>
+      </motion.div>
     );
   };
 
@@ -280,17 +295,17 @@ export function SquadSplitTab({ classId, students, onRefreshWorkspace }: SquadSp
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
         {/* Left 5 cols: Members in Tổ + Batch Assign */}
         <div className="lg:col-span-5 space-y-5">
-          <div className="bg-white border border-slate-200 rounded-2xl p-5">
-            <div className="flex items-center justify-between gap-3 pb-3 border-b border-slate-100">
+          <div className="bg-white border border-slate-200 rounded-2xl p-4 sm:p-5">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 pb-3 border-b border-slate-100">
               <h3 className="text-base font-bold text-slate-900 flex items-center gap-2">
-                <Users className="w-4 h-4 text-blue-600" />
+                <Users className="w-4 h-4 text-blue-600 shrink-0" />
                 Thành viên Tổ {selectedTo} ({studentsInSelectedTo.length} HS)
               </h3>
               <button
                 type="button"
                 onClick={() => handleRandomSplitOneTo(selectedTo)}
                 disabled={studentsInSelectedTo.length < 2}
-                className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-white bg-blue-600 hover:bg-blue-700 disabled:opacity-40 rounded-xl whitespace-nowrap"
+                className="inline-flex items-center justify-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-white bg-blue-600 hover:bg-blue-700 disabled:opacity-40 rounded-xl whitespace-nowrap self-start sm:self-auto"
               >
                 <Shuffle className="w-3.5 h-3.5" />
                 Chia ngẫu nhiên Tổ {selectedTo}
@@ -304,10 +319,10 @@ export function SquadSplitTab({ classId, students, onRefreshWorkspace }: SquadSp
             ) : (
               <div className="divide-y divide-slate-100 mt-2">
                 {studentsInSelectedTo.map((stu) => (
-                  <div key={stu.id} className="py-2.5 flex items-center justify-between gap-2">
+                  <div key={stu.id} className="py-2.5 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
                     <div className="min-w-0">
                       <div className="text-sm font-semibold text-slate-900 flex items-center gap-1.5 truncate">
-                        <span>{stu.name}</span>
+                        <span className="truncate">{stu.name}</span>
                         {stu.isLeader && <Crown className="w-3.5 h-3.5 text-amber-500 shrink-0" />}
                       </div>
                       <div className="text-xs text-slate-500 font-mono">
@@ -350,10 +365,10 @@ export function SquadSplitTab({ classId, students, onRefreshWorkspace }: SquadSp
           </div>
 
           {/* Batch Assign Students into Selected Tổ */}
-          <div className="bg-white border border-slate-200 rounded-2xl p-5">
-            <div className="flex items-center justify-between gap-2 pb-3 border-b border-slate-100">
+          <div className="bg-white border border-slate-200 rounded-2xl p-4 sm:p-5">
+            <div className="flex flex-wrap items-center justify-between gap-2 pb-3 border-b border-slate-100">
               <h4 className="text-sm font-bold text-slate-900 flex items-center gap-1.5">
-                <UserPlus className="w-4 h-4 text-slate-600" />
+                <UserPlus className="w-4 h-4 text-slate-600 shrink-0" />
                 Chuyển học sinh khác vào Tổ {selectedTo}
               </h4>
               <button
@@ -457,10 +472,10 @@ export function SquadSplitTab({ classId, students, onRefreshWorkspace }: SquadSp
 
           {/* All 4 Tổ Summary Grid when split all is triggered */}
           {splitKeysCount > 1 && (
-            <div className="bg-white border border-blue-200 rounded-2xl p-5">
-              <div className="flex items-center justify-between gap-3 pb-3 border-b border-slate-100 mb-4">
+            <div className="bg-white border border-blue-200 rounded-2xl p-4 sm:p-5">
+              <div className="flex flex-wrap items-center justify-between gap-3 pb-3 border-b border-slate-100 mb-4">
                 <h3 className="text-base font-bold text-slate-900 flex items-center gap-2">
-                  <Sparkles className="w-4 h-4 text-blue-600" />
+                  <Sparkles className="w-4 h-4 text-blue-600 shrink-0" />
                   Tổng quan 8 Nhóm sau khi chia cả 4 Tổ
                 </h3>
                 <button
@@ -483,7 +498,7 @@ export function SquadSplitTab({ classId, students, onRefreshWorkspace }: SquadSp
                         <span>Tổ {toNum}</span>
                         <span className="font-mono text-emerald-700">Lệch {res.scoreDiff}đ</span>
                       </div>
-                      <div className="grid grid-cols-2 gap-2 text-xs">
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs">
                         <div className="p-2 bg-white border border-slate-200 rounded-lg">
                           <div className="font-bold text-blue-700">
                             Nhóm {res.groupA.targetGroupNumber} ({res.groupA.totalScore}đ)

@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { motion } from 'motion/react';
 import {
   Calendar,
   Check,
@@ -35,6 +36,7 @@ import {
 } from '../lib/api.ts';
 import { autoDealMissionCards } from '../lib/balancedRandom.ts';
 import { createEmptyEightGroups } from '../lib/defaultSeedData.ts';
+import { GROUP_THEMES, MISSION_THEMES } from '../lib/themePalette.ts';
 import { buildStudentQrUrl } from '../../shared/qrToken.ts';
 import { QrCodeBox } from './QrCodeBox.tsx';
 
@@ -98,6 +100,8 @@ export function MissionQrTab({
   const [saving, setSaving] = useState(false);
   const [saveMessage, setSaveMessage] = useState('');
   const [activeSubPanel, setActiveSubPanel] = useState<'assign' | 'config' | 'deck' | 'print'>('assign');
+  const [dealWave, setDealWave] = useState(0);
+  const [copiedGroup, setCopiedGroup] = useState<number | null>(null);
 
   // New card form state
   const [newCardMissionId, setNewCardMissionId] = useState<number>(1);
@@ -177,6 +181,7 @@ export function MissionQrTab({
       };
     });
     setGroups(next);
+    setDealWave((k) => k + 1);
     setSaving(true);
     try {
       await saveDailyAssignment({
@@ -307,13 +312,13 @@ export function MissionQrTab({
   return (
     <div className="space-y-6">
       {/* Sub-navigation & Date Bar */}
-      <div className="bg-white border border-slate-200 rounded-2xl p-5 no-print">
+      <div className="bg-white border border-slate-200 rounded-2xl p-4 sm:p-5 no-print">
         <div className="flex flex-col xl:flex-row xl:items-center xl:justify-between gap-4">
-          <div className="flex flex-wrap items-center gap-1 p-1 bg-slate-100 rounded-xl self-start">
+          <div className="flex flex-wrap items-center gap-1 p-1 bg-slate-100 rounded-xl w-full xl:w-auto">
             <button
               type="button"
               onClick={() => setActiveSubPanel('assign')}
-              className={`px-3.5 py-2 text-xs sm:text-sm font-semibold rounded-lg transition-colors whitespace-nowrap ${
+              className={`px-3 py-2 text-xs sm:text-sm font-semibold rounded-lg transition-colors whitespace-nowrap ${
                 activeSubPanel === 'assign'
                   ? 'bg-white text-blue-700 shadow-sm'
                   : 'text-slate-600 hover:text-slate-900'
@@ -324,7 +329,7 @@ export function MissionQrTab({
             <button
               type="button"
               onClick={() => setActiveSubPanel('config')}
-              className={`px-3.5 py-2 text-xs sm:text-sm font-semibold rounded-lg transition-colors whitespace-nowrap ${
+              className={`px-3 py-2 text-xs sm:text-sm font-semibold rounded-lg transition-colors whitespace-nowrap ${
                 activeSubPanel === 'config'
                   ? 'bg-white text-blue-700 shadow-sm'
                   : 'text-slate-600 hover:text-slate-900'
@@ -335,7 +340,7 @@ export function MissionQrTab({
             <button
               type="button"
               onClick={() => setActiveSubPanel('deck')}
-              className={`px-3.5 py-2 text-xs sm:text-sm font-semibold rounded-lg transition-colors whitespace-nowrap ${
+              className={`px-3 py-2 text-xs sm:text-sm font-semibold rounded-lg transition-colors whitespace-nowrap ${
                 activeSubPanel === 'deck'
                   ? 'bg-white text-blue-700 shadow-sm'
                   : 'text-slate-600 hover:text-slate-900'
@@ -346,7 +351,7 @@ export function MissionQrTab({
             <button
               type="button"
               onClick={() => setActiveSubPanel('print')}
-              className={`px-3.5 py-2 text-xs sm:text-sm font-semibold rounded-lg transition-colors whitespace-nowrap ${
+              className={`px-3 py-2 text-xs sm:text-sm font-semibold rounded-lg transition-colors whitespace-nowrap ${
                 activeSubPanel === 'print'
                   ? 'bg-white text-blue-700 shadow-sm'
                   : 'text-slate-600 hover:text-slate-900'
@@ -357,13 +362,13 @@ export function MissionQrTab({
           </div>
 
           <div className="flex flex-wrap items-center gap-2.5">
-            <div className="relative">
+            <div className="relative w-full sm:w-auto">
               <Calendar className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
               <input
                 type="date"
                 value={selectedDate}
                 onChange={(e) => onDateChange(e.target.value)}
-                className="pl-9 pr-3 py-2 text-sm font-mono tabular-nums border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-600"
+                className="w-full sm:w-auto pl-9 pr-3 py-2 text-sm font-mono tabular-nums border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-600"
               />
             </div>
 
@@ -429,10 +434,10 @@ export function MissionQrTab({
         )}
       </div>
 
-      {/* PANEL 1: Auto-Deal + 8 Group Cards WITH Live QR Codes */}
+      {/* PANEL 1: Auto-Deal + 8 Color-Coded Group Cards WITH Live QR Codes */}
       {activeSubPanel === 'assign' && (
-        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-5">
-          {GROUP_NUMBERS.map((groupNum) => {
+        <div key={dealWave} className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-5">
+          {GROUP_NUMBERS.map((groupNum, idx) => {
             const plan = groups[groupNum] || {
               groupNumber: groupNum,
               cardIds: [],
@@ -444,130 +449,156 @@ export function MissionQrTab({
             );
             const leader = groupStudents.find((s) => s.isLeader);
             const qrUrl = getQrUrlForGroup(groupNum);
+            const teamTheme = GROUP_THEMES[groupNum];
 
             return (
-              <div
+              <motion.div
                 key={groupNum}
-                className="bg-white border border-slate-200 rounded-2xl p-4 flex flex-col justify-between"
+                initial={{ opacity: 0, y: 16, scale: 0.96 }}
+                animate={{ opacity: 1, y: 0, scale: 1 }}
+                transition={{
+                  type: 'spring',
+                  stiffness: 280,
+                  damping: 22,
+                  delay: idx * 0.045,
+                }}
+                whileHover={{ y: -3 }}
+                className="bg-white border border-slate-200/90 rounded-3xl overflow-hidden flex flex-col justify-between shadow-[0_10px_26px_-12px_rgba(15,23,42,0.12)]"
               >
                 <div>
-                  <div className="flex items-start justify-between gap-2 pb-3 border-b border-slate-100">
+                  {/* Vibrant Team Color Top Header */}
+                  <div className={`px-4 py-3.5 bg-gradient-to-r ${teamTheme.gradientHeader} text-white flex items-start justify-between gap-2`}>
                     <div>
-                      <div className="text-xs text-slate-500 flex items-center gap-1.5">
+                      <div className="text-[11px] font-semibold text-white/90 flex items-center gap-1.5">
+                        <span>{teamTheme.teamLabel}</span>
+                        <span aria-hidden="true">·</span>
                         <span className="font-mono tabular-nums">{groupStudents.length} HS</span>
                         <span aria-hidden="true">·</span>
-                        <span className="font-mono tabular-nums text-blue-700 font-semibold">
-                          {plan.cardIds.length} thẻ
-                        </span>
+                        <span className="font-mono tabular-nums">{plan.cardIds.length} thẻ</span>
                       </div>
-                      <h3 className="text-lg font-extrabold text-slate-900 mt-0.5">Nhóm {groupNum}</h3>
+                      <h3 className="text-lg font-extrabold mt-0.5">Nhóm {groupNum}</h3>
                     </div>
 
-                    <button
+                    <motion.button
+                      whileHover={{ scale: 1.04 }}
+                      whileTap={{ scale: 0.95 }}
                       type="button"
                       onClick={() => onPreviewStudentQr(classId, groupNum, selectedDate)}
-                      className="inline-flex items-center gap-1 px-2.5 py-1.5 text-xs font-semibold text-blue-700 bg-blue-50 hover:bg-blue-100 rounded-lg transition-colors whitespace-nowrap"
+                      className="inline-flex items-center gap-1 px-2.5 py-1.5 text-xs font-bold text-slate-900 bg-white/95 hover:bg-white rounded-xl transition-colors whitespace-nowrap shadow-xs"
                     >
                       <QrCode className="w-3.5 h-3.5" />
                       Trang HS
-                    </button>
+                    </motion.button>
                   </div>
 
-                  {/* Live QR Code directly on each group card right after dealing */}
-                  <div className="my-3 py-2.5 px-2 bg-slate-50 border border-slate-200 rounded-xl flex flex-col items-center">
-                    <QrCodeBox value={qrUrl} size={116} label={`QR Lớp ${classId} Nhóm ${groupNum}`} />
-                    <div className="mt-1.5 flex items-center gap-3 text-[11px]">
-                      <span className="text-slate-500">Quét để nhận nhiệm vụ</span>
-                      <button
-                        type="button"
-                        onClick={() => navigator.clipboard?.writeText(qrUrl)}
-                        className="font-semibold text-blue-700 hover:underline"
-                      >
-                        Chép link
-                      </button>
-                    </div>
-                  </div>
-
-                  {/* Leader & Members Quick List */}
-                  <div className="text-xs text-slate-600 mb-3">
-                    {leader && (
-                      <div className="font-semibold text-amber-700 flex items-center gap-1 mb-0.5">
-                        <Crown className="w-3.5 h-3.5 text-amber-500 shrink-0" />
-                        Nhóm trưởng: {leader.name}
+                  <div className="p-4">
+                    {/* Live QR Code directly on each group card right after dealing */}
+                    <motion.div
+                      whileHover={{ scale: 1.02 }}
+                      transition={{ type: 'spring', stiffness: 320, damping: 24 }}
+                      className={`mb-3 py-3 px-2 ${teamTheme.softBg} border ${teamTheme.border} rounded-2xl flex flex-col items-center`}
+                    >
+                      <QrCodeBox value={qrUrl} size={116} label={`QR Lớp ${classId} Nhóm ${groupNum}`} />
+                      <div className="mt-2 flex items-center gap-3 text-[11px]">
+                        <span className="text-slate-600 font-medium">Quét riêng Nhóm {groupNum}</span>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            navigator.clipboard?.writeText(qrUrl);
+                            setCopiedGroup(groupNum);
+                            setTimeout(() => setCopiedGroup((c) => (c === groupNum ? null : c)), 1500);
+                          }}
+                          className={`font-bold ${teamTheme.textAccent} hover:underline`}
+                        >
+                          {copiedGroup === groupNum ? 'Đã chép!' : 'Chép link'}
+                        </button>
                       </div>
-                    )}
-                    <div className="truncate" title={groupStudents.map((s) => s.name).join(', ')}>
-                      <span className="font-semibold text-slate-700">TV: </span>
-                      {groupStudents.length === 0
-                        ? 'Chưa có học sinh'
-                        : groupStudents.map((s) => s.name).join(', ')}
-                    </div>
-                  </div>
+                    </motion.div>
 
-                  {/* Assigned Cards */}
-                  <div>
-                    <div className="text-xs font-semibold text-slate-700 mb-1.5">
-                      Thẻ nhiệm vụ ({plan.cardIds.length})
-                    </div>
-                    {plan.cardIds.length === 0 ? (
-                      <div className="p-2.5 text-xs text-slate-400 border border-dashed border-slate-200 rounded-xl text-center">
-                        Chưa phát thẻ
+                    {/* Leader & Members Quick List */}
+                    <div className="text-xs text-slate-600 mb-3">
+                      {leader && (
+                        <div className="font-bold text-amber-700 flex items-center gap-1 mb-0.5">
+                          <Crown className="w-3.5 h-3.5 text-amber-500 shrink-0" />
+                          Nhóm trưởng: {leader.name}
+                        </div>
+                      )}
+                      <div className="truncate" title={groupStudents.map((s) => s.name).join(', ')}>
+                        <span className="font-semibold text-slate-700">TV: </span>
+                        {groupStudents.length === 0
+                          ? 'Chưa có học sinh'
+                          : groupStudents.map((s) => s.name).join(', ')}
                       </div>
-                    ) : (
-                      <div className="space-y-1.5">
-                        {plan.cardIds.map((cid, idx) => {
-                          const card = allCards.find((c) => c.id === cid);
-                          const accent = card ? MISSION_ACCENTS[card.missionId] || MISSION_ACCENTS[1] : MISSION_ACCENTS[1];
-                          return (
-                            <div
-                              key={`${cid}-${idx}`}
-                              className={`flex items-center justify-between gap-1.5 px-2.5 py-2 border rounded-xl text-xs ${accent.bg} ${accent.border}`}
-                            >
-                              <div className="min-w-0">
-                                <div className={`font-mono font-bold ${accent.text}`}>
-                                  {card ? `NV${card.missionId} · ${card.code}` : cid}
-                                </div>
-                                <div className="text-slate-800 font-medium truncate">
-                                  {card ? card.title : 'Thẻ không tồn tại'}
-                                </div>
-                              </div>
-                              <button
-                                type="button"
-                                onClick={() => handleRemoveCardFromGroup(groupNum, idx)}
-                                title="Gỡ thẻ này"
-                                className="text-slate-400 hover:text-red-600 p-1 shrink-0"
+                    </div>
+
+                    {/* Assigned Cards */}
+                    <div>
+                      <div className="text-xs font-bold text-slate-700 mb-1.5">
+                        Thẻ nhiệm vụ ({plan.cardIds.length})
+                      </div>
+                      {plan.cardIds.length === 0 ? (
+                        <div className="p-2.5 text-xs text-slate-400 border border-dashed border-slate-200 rounded-xl text-center">
+                          Chưa phát thẻ
+                        </div>
+                      ) : (
+                        <div className="space-y-1.5">
+                          {plan.cardIds.map((cid, cIdx) => {
+                            const card = allCards.find((c) => c.id === cid);
+                            const mTheme = card ? MISSION_THEMES[card.missionId] || MISSION_THEMES[1] : MISSION_THEMES[1];
+                            return (
+                              <motion.div
+                                key={`${cid}-${cIdx}`}
+                                initial={{ opacity: 0, x: -6 }}
+                                animate={{ opacity: 1, x: 0 }}
+                                transition={{ delay: 0.04 * cIdx }}
+                                className={`flex items-center justify-between gap-1.5 px-2.5 py-2 border rounded-xl text-xs ${mTheme.bg} ${mTheme.border}`}
                               >
-                                <Trash2 className="w-3.5 h-3.5" />
-                              </button>
-                            </div>
-                          );
-                        })}
-                      </div>
-                    )}
+                                <div className="min-w-0">
+                                  <div className={`font-mono font-bold ${mTheme.text}`}>
+                                    {card ? `NV${card.missionId} · ${card.code}` : cid}
+                                  </div>
+                                  <div className="text-slate-800 font-semibold truncate">
+                                    {card ? card.title : 'Thẻ không tồn tại'}
+                                  </div>
+                                </div>
+                                <button
+                                  type="button"
+                                  onClick={() => handleRemoveCardFromGroup(groupNum, cIdx)}
+                                  title="Gỡ thẻ này"
+                                  className="text-slate-400 hover:text-rose-600 p-1 shrink-0"
+                                >
+                                  <Trash2 className="w-3.5 h-3.5" />
+                                </button>
+                              </motion.div>
+                            );
+                          })}
+                        </div>
+                      )}
 
-                    <div className="mt-2">
-                      <select
-                        value=""
-                        onChange={(e) => handleAddCardToGroup(groupNum, e.target.value)}
-                        className="w-full px-2.5 py-1.5 text-xs bg-white border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-600 text-slate-700"
-                      >
-                        <option value="">+ Thêm thẻ thủ công...</option>
-                        {coreMissions.map((m) => (
-                          <optgroup key={m.id} label={m.title}>
-                            {m.cards.map((c) => (
-                              <option key={c.id} value={c.id}>
-                                [{c.code}] {c.title}
-                              </option>
-                            ))}
-                          </optgroup>
-                        ))}
-                      </select>
+                      <div className="mt-2">
+                        <select
+                          value=""
+                          onChange={(e) => handleAddCardToGroup(groupNum, e.target.value)}
+                          className="w-full px-2.5 py-1.5 text-xs bg-white border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-600 text-slate-700"
+                        >
+                          <option value="">+ Thêm thẻ thủ công...</option>
+                          {coreMissions.map((m) => (
+                            <optgroup key={m.id} label={m.title}>
+                              {m.cards.map((c) => (
+                                <option key={c.id} value={c.id}>
+                                  [{c.code}] {c.title}
+                                </option>
+                              ))}
+                            </optgroup>
+                          ))}
+                        </select>
+                      </div>
                     </div>
                   </div>
                 </div>
 
                 {/* Homework & Note */}
-                <div className="mt-3 pt-3 border-t border-slate-100 space-y-2">
+                <div className="px-4 pb-4 pt-3 border-t border-slate-100 space-y-2">
                   <div>
                     <label className="block text-[11px] font-semibold text-slate-600 mb-1">
                       Bài tập về nhà Nhóm {groupNum}
@@ -577,7 +608,7 @@ export function MissionQrTab({
                       value={plan.homework}
                       onChange={(e) => handleUpdateGroupField(groupNum, 'homework', e.target.value)}
                       placeholder="Nhập BTVN cho nhóm..."
-                      className="w-full px-2.5 py-1.5 text-xs border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-600"
+                      className="w-full px-2.5 py-1.5 text-xs border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-600"
                     />
                   </div>
                   <input
@@ -585,10 +616,10 @@ export function MissionQrTab({
                     value={plan.teacherNote || ''}
                     onChange={(e) => handleUpdateGroupField(groupNum, 'teacherNote', e.target.value)}
                     placeholder="Ghi chú thêm khi quét QR..."
-                    className="w-full px-2.5 py-1.5 text-xs border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-600"
+                    className="w-full px-2.5 py-1.5 text-xs border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-600"
                   />
                 </div>
-              </div>
+              </motion.div>
             );
           })}
         </div>
@@ -598,11 +629,11 @@ export function MissionQrTab({
       {activeSubPanel === 'config' && (
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
           {/* Left 6 cols: Cards per 8 Groups */}
-          <div className="lg:col-span-6 bg-white border border-slate-200 rounded-2xl p-5">
-            <div className="flex items-center justify-between gap-3 pb-3 border-b border-slate-100 mb-4">
+          <div className="lg:col-span-6 bg-white border border-slate-200 rounded-2xl p-4 sm:p-5">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-slate-100 mb-4">
               <div>
                 <h3 className="text-base font-bold text-slate-900 flex items-center gap-2">
-                  <Settings2 className="w-4 h-4 text-blue-600" />
+                  <Settings2 className="w-4 h-4 text-blue-600 shrink-0" />
                   Số thẻ phát cho 8 Nhóm trong buổi học
                 </h3>
                 <p className="text-xs text-slate-500 mt-0.5">
@@ -702,13 +733,13 @@ export function MissionQrTab({
                 return (
                   <div
                     key={m.id}
-                    className={`p-3 border rounded-xl flex items-center justify-between gap-3 ${accent.bg} ${accent.border}`}
+                    className={`p-3 border rounded-xl flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 sm:gap-3 ${accent.bg} ${accent.border}`}
                   >
                     <div className="min-w-0">
                       <div className={`text-xs font-bold ${accent.text}`}>
                         Nhiệm vụ {m.id} · {count > 1 ? `${count} nhóm làm trùng` : count === 1 ? '1 nhóm làm' : 'Tạm nghỉ'}
                       </div>
-                      <div className="text-sm font-semibold text-slate-900 truncate">
+                      <div className="text-sm font-semibold text-slate-900 break-words">
                         {m.title.replace(/^Nhiệm vụ \d+:\s*/, '')}
                       </div>
                     </div>

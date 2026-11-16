@@ -164,8 +164,13 @@ export function exportRosterToExcel(classId: string, students: Student[]): void 
   XLSX.writeFile(wb, `DanhSach_Lop_${cleanCode}.xlsx`);
 }
 
+function clampSessionScore(base: number, penalty: number, bonus: number): number {
+  return Math.min(10, Math.max(0, Number((base - penalty + bonus).toFixed(2))));
+}
+
 /**
- * Xuất Bảng tính Điểm buổi học (gồm 2 sheet: Điểm 8 Nhóm & Điểm quy đổi cho từng Học sinh)
+ * Xuất Bảng tính Điểm buổi học: Danh sách TẤT CẢ học sinh phân theo từng Nhóm (1 -> 8),
+ * điểm của từng học sinh hiển thị trực tiếp trên hàng của em đó (tối đa 10 điểm).
  */
 export function exportSessionGradebookToExcel(
   classId: string,
@@ -174,76 +179,118 @@ export function exportSessionGradebookToExcel(
 ): void {
   const cleanCode = classId.replace(/[^a-zA-Z0-9]/g, '');
 
-  const groupRows = [...record.entries]
-    .sort((a, b) => a.groupNumber - b.groupNumber)
-    .map((entry) => {
-      const members = classStudents.filter((s) => s.groupNumber === entry.groupNumber);
-      const leader = members.find((m) => m.isLeader);
-      return {
-        NgayHoc: record.date,
-        Lop: classId,
-        Nhom: `Nhóm ${entry.groupNumber}`,
-        SiSo: members.length,
-        NhomTruong: leader ? leader.name : 'Chưa chọn',
-        DiemCho: entry.baseScore,
-        DiemCong: entry.bonusPoints,
-        DiemTru: entry.penaltyPoints,
-        TongDiem_ChoTruCong: Number(
-          (entry.baseScore - entry.penaltyPoints + entry.bonusPoints).toFixed(2)
-        ),
-        NhanXet: entry.feedback || '',
-      };
-    });
-
   const studentRows = [...classStudents]
-    .sort((a, b) => a.groupNumber - b.groupNumber || a.name.localeCompare(b.name))
+    .sort(
+      (a, b) =>
+        a.groupNumber - b.groupNumber ||
+        Number(b.isLeader) - Number(a.isLeader) ||
+        a.name.localeCompare(b.name, 'vi')
+    )
     .map((stu, idx) => {
       const groupEntry = record.entries.find((e) => e.groupNumber === stu.groupNumber);
       const base = groupEntry?.baseScore ?? 0;
       const bonus = groupEntry?.bonusPoints ?? 0;
       const penalty = groupEntry?.penaltyPoints ?? 0;
-      const total = Number((base - penalty + bonus).toFixed(2));
+      const total = clampSessionScore(base, penalty, bonus);
       return {
         STT: idx + 1,
         MaHS: stu.studentCode,
         HoTen: stu.name,
         NgaySinh: stu.birthDate || '',
+        Lop: stu.classId,
         To: `Tổ ${stu.to}`,
         Nhom: `Nhóm ${stu.groupNumber}`,
         VaiTro: stu.isLeader ? 'Nhóm trưởng' : 'Thành viên',
-        DiemNhomCho: base,
+        DiemCho: base,
         DiemCong: bonus,
         DiemTru: penalty,
-        DiemBuoiHocNhanDuoc: total,
+        DiemTong_ToiDa10: total,
+        NhanXet: groupEntry?.feedback || '',
+        NgayHoc: record.date,
       };
     });
 
   const wb = XLSX.utils.book_new();
-  const wsGroups = XLSX.utils.json_to_sheet(groupRows);
   const wsStudents = XLSX.utils.json_to_sheet(studentRows);
-  XLSX.utils.book_append_sheet(wb, wsGroups, 'BangDiem_TheoNhom');
-  XLSX.utils.book_append_sheet(wb, wsStudents, 'BangDiem_TungHocSinh');
+  wsStudents['!cols'] = [
+    { wch: 5 },
+    { wch: 10 },
+    { wch: 24 },
+    { wch: 12 },
+    { wch: 8 },
+    { wch: 8 },
+    { wch: 10 },
+    { wch: 14 },
+    { wch: 10 },
+    { wch: 10 },
+    { wch: 10 },
+    { wch: 16 },
+    { wch: 24 },
+    { wch: 12 },
+  ];
+  XLSX.utils.book_append_sheet(wb, wsStudents, `BangDiem_Lop_${cleanCode}`);
   XLSX.writeFile(wb, `BangDiem_${cleanCode}_${record.date}.xlsx`);
 }
 
-export function exportAllGradesToExcel(classId: string, grades: DailyGradeRecord[]): void {
+export function exportAllGradesToExcel(
+  classId: string,
+  grades: DailyGradeRecord[],
+  classStudents: Student[] = []
+): void {
   const cleanCode = classId.replace(/[^a-zA-Z0-9]/g, '');
   const rows: Array<Record<string, string | number>> = [];
-  const sorted = [...grades].sort((a, b) => b.date.localeCompare(a.date));
-  for (const record of sorted) {
-    const ordered = [...record.entries].sort((a, b) => a.groupNumber - b.groupNumber);
-    for (const entry of ordered) {
-      rows.push({
-        NgayHoc: record.date,
-        Lop: record.classId,
-        ChuDe: record.lessonTopic,
-        Nhom: `Nhóm ${entry.groupNumber}`,
-        DiemCho: entry.baseScore,
-        DiemCong: entry.bonusPoints,
-        DiemTru: entry.penaltyPoints,
-        TongDiem: Number((entry.baseScore - entry.penaltyPoints + entry.bonusPoints).toFixed(2)),
-        NhanXet: entry.feedback,
+  const sortedGrades = [...grades].sort((a, b) => b.date.localeCompare(a.date));
+  const sortedStudents = [...classStudents].sort(
+    (a, b) =>
+      a.groupNumber - b.groupNumber ||
+      Number(b.isLeader) - Number(a.isLeader) ||
+      a.name.localeCompare(b.name, 'vi')
+  );
+
+  for (const record of sortedGrades) {
+    if (sortedStudents.length > 0) {
+      sortedStudents.forEach((stu, idx) => {
+        const entry = record.entries.find((e) => e.groupNumber === stu.groupNumber);
+        const base = entry?.baseScore ?? 0;
+        const bonus = entry?.bonusPoints ?? 0;
+        const penalty = entry?.penaltyPoints ?? 0;
+        rows.push({
+          NgayHoc: record.date,
+          Lop: record.classId,
+          ChuDe: record.lessonTopic,
+          STT: idx + 1,
+          MaHS: stu.studentCode,
+          HoTen: stu.name,
+          NgaySinh: stu.birthDate || '',
+          To: `Tổ ${stu.to}`,
+          Nhom: `Nhóm ${stu.groupNumber}`,
+          VaiTro: stu.isLeader ? 'Nhóm trưởng' : 'Thành viên',
+          DiemCho: base,
+          DiemCong: bonus,
+          DiemTru: penalty,
+          DiemTong_ToiDa10: clampSessionScore(base, penalty, bonus),
+          NhanXet: entry?.feedback || '',
+        });
       });
+    } else {
+      const ordered = [...record.entries].sort((a, b) => a.groupNumber - b.groupNumber);
+      for (const entry of ordered) {
+        rows.push({
+          NgayHoc: record.date,
+          Lop: record.classId,
+          ChuDe: record.lessonTopic,
+          Nhom: `Nhóm ${entry.groupNumber}`,
+          DiemCho: entry.baseScore,
+          DiemCong: entry.bonusPoints,
+          DiemTru: entry.penaltyPoints,
+          DiemTong_ToiDa10: clampSessionScore(
+            entry.baseScore,
+            entry.penaltyPoints,
+            entry.bonusPoints
+          ),
+          NhanXet: entry.feedback,
+        });
+      }
     }
   }
   const wb = XLSX.utils.book_new();

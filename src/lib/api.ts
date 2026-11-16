@@ -1162,7 +1162,10 @@ export async function saveDailyGrade(
     ...payload,
     entries: payload.entries.map((e) => ({
       ...e,
-      finalScore: Number((e.baseScore - e.penaltyPoints + e.bonusPoints).toFixed(2)),
+      finalScore: Math.min(
+        10,
+        Math.max(0, Number((e.baseScore - e.penaltyPoints + e.bonusPoints).toFixed(2)))
+      ),
     })),
     updatedAt: new Date().toISOString(),
   };

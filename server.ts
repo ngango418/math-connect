@@ -203,6 +203,68 @@ async function startServer() {
     res.json(payload);
   });
 
+  // In-memory ring buffer for live classroom completion notifications (60s TTL)
+  const recentCompletionEvents: Array<{
+    id: string;
+    classId: string;
+    groupNumber: GroupNumber;
+    cardTitle: string;
+    allCompleted: boolean;
+    completedCount: number;
+    totalCards: number;
+    timestamp: number;
+  }> = [];
+
+  app.post('/api/public/mission-complete', (req, res) => {
+    const body = req.body as {
+      id?: string;
+      classId?: string;
+      groupNumber?: number;
+      cardTitle?: string;
+      allCompleted?: boolean;
+      completedCount?: number;
+      totalCards?: number;
+      date?: string;
+      k?: string;
+    };
+    const classId = String(body.classId || '').trim();
+    const groupNumber = normalizeGroupNumber(body.groupNumber);
+    const date =
+      typeof body.date === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(body.date)
+        ? body.date
+        : getTodayDateString();
+    if (!verifyQrAccessToken(classId, groupNumber, date, body.k)) {
+      res.status(403).json({ error: 'Mã QR không hợp lệ.' });
+      return;
+    }
+    const evt = {
+      id: body.id || `evt-${crypto.randomUUID().slice(0, 8)}`,
+      classId,
+      groupNumber,
+      cardTitle: String(body.cardTitle || 'Nhiệm vụ nhóm').slice(0, 140),
+      allCompleted: Boolean(body.allCompleted),
+      completedCount: Number(body.completedCount) || 1,
+      totalCards: Number(body.totalCards) || 1,
+      timestamp: Date.now(),
+    };
+    const cutoff = Date.now() - 60_000;
+    while (recentCompletionEvents.length > 0 && recentCompletionEvents[0].timestamp < cutoff) {
+      recentCompletionEvents.shift();
+    }
+    recentCompletionEvents.push(evt);
+    res.status(201).json(evt);
+  });
+
+  app.get('/api/public/completions', (req, res) => {
+    const classId = String(req.query.class || '').trim();
+    const since = Number(req.query.since || 0);
+    const cutoff = Math.max(since, Date.now() - 60_000);
+    const events = recentCompletionEvents.filter(
+      (e) => (!classId || e.classId === classId) && e.timestamp > cutoff
+    );
+    res.json({ events });
+  });
+
   // Public list of available classes for Student Portal dropdown
   app.get('/api/public/classes', (_req, res) => {
     const db = loadDb();
@@ -604,7 +666,10 @@ ${JSON.stringify(truncatedRows)}`;
       lessonTopic: payload.lessonTopic?.trim() || `Buổi học ngày ${payload.date}`,
       entries: payload.entries.map((e) => ({
         ...e,
-        finalScore: Number((e.baseScore - e.penaltyPoints + e.bonusPoints).toFixed(2)),
+        finalScore: Math.min(
+          10,
+          Math.max(0, Number((e.baseScore - e.penaltyPoints + e.bonusPoints).toFixed(2)))
+        ),
       })),
       publishedToStudents: Boolean(payload.publishedToStudents),
       updatedAt: new Date().toISOString(),

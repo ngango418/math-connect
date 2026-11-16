@@ -377,8 +377,8 @@ export function StudentRosterTab({ classId, students, onRefreshWorkspace }: Stud
             </div>
           </div>
 
-          <div className="mt-3 max-h-64 overflow-y-auto">
-            <table className="w-full text-left text-xs border-collapse">
+          <div className="mt-3 max-h-64 overflow-x-auto overflow-y-auto">
+            <table className="w-full text-left text-xs border-collapse min-w-[540px]">
               <thead>
                 <tr className="border-b border-slate-200 text-slate-500">
                   <th className="py-2 pr-3">Họ và tên</th>
@@ -516,8 +516,8 @@ export function StudentRosterTab({ classId, students, onRefreshWorkspace }: Stud
 
       {/* Add/Edit Student Modal */}
       {modalOpen && (
-        <div className="fixed inset-0 z-50 bg-slate-900/40 flex items-center justify-center p-4">
-          <div className="bg-white border border-slate-200 rounded-2xl w-full max-w-md p-6 shadow-lg">
+        <div className="fixed inset-0 z-50 bg-slate-900/40 flex items-center justify-center p-3.5 sm:p-4">
+          <div className="bg-white border border-slate-200 rounded-2xl w-full max-w-md max-h-[90vh] overflow-y-auto p-5 sm:p-6 shadow-lg">
             <div className="flex items-center justify-between pb-3 border-b border-slate-100 mb-4">
               <h3 className="text-base font-bold text-slate-900">
                 {editingStudent ? 'Chỉnh sửa thông tin học sinh' : `Thêm học sinh vào Lớp ${classId}`}
@@ -544,7 +544,7 @@ export function StudentRosterTab({ classId, students, onRefreshWorkspace }: Stud
                 />
               </div>
 
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
                   <label className="block text-xs font-medium text-slate-700 mb-1">Ngày tháng năm sinh</label>
                   <input
@@ -566,7 +566,7 @@ export function StudentRosterTab({ classId, students, onRefreshWorkspace }: Stud
                 </div>
               </div>
 
-              <div className="grid grid-cols-3 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                 <div>
                   <label className="block text-xs font-medium text-slate-700 mb-1">Tổ (1–4)</label>
                   <select
