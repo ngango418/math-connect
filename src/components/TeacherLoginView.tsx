@@ -2,6 +2,7 @@ import { useState, type FormEvent } from 'react';
 import { Lock, LogIn, UserPlus } from 'lucide-react';
 import type { TeacherUser } from '../../shared/types.ts';
 import { loginTeacher, registerTeacher } from '../lib/api.ts';
+import { getFirebaseProjectId, isFirebaseEnvConfigured } from '../lib/firebaseClient.ts';
 
 interface TeacherLoginViewProps {
   onSuccess: (user: TeacherUser) => void;
@@ -9,9 +10,11 @@ interface TeacherLoginViewProps {
 }
 
 export function TeacherLoginView({ onSuccess, onSwitchToStudent }: TeacherLoginViewProps) {
+  const firebaseReady = isFirebaseEnvConfigured();
+  const firebaseProjectId = getFirebaseProjectId();
   const [mode, setMode] = useState<'login' | 'register'>('login');
-  const [email, setEmail] = useState('giaovien@truonghoc.edu.vn');
-  const [password, setPassword] = useState('123456');
+  const [email, setEmail] = useState(firebaseReady ? '' : 'giaovien@truonghoc.edu.vn');
+  const [password, setPassword] = useState(firebaseReady ? '' : '123456');
   const [name, setName] = useState('');
   const [subject, setSubject] = useState('Khối 9');
   const [loading, setLoading] = useState(false);
@@ -57,21 +60,34 @@ export function TeacherLoginView({ onSuccess, onSwitchToStudent }: TeacherLoginV
               và chấm điểm xếp hạng theo ngày.
             </p>
 
-            <div className="mt-6 pt-6 border-t border-slate-200 space-y-3 text-sm">
-              <div className="font-semibold text-slate-900">Tài khoản giáo viên mặc định để dùng thử:</div>
-              <div className="bg-slate-50 border border-slate-200 rounded-lg p-3.5 font-mono text-xs space-y-1.5">
-                <div>
-                  Email: <span className="font-semibold text-slate-900">giaovien@truonghoc.edu.vn</span>
+            {firebaseReady ? (
+              <div className="mt-6 pt-6 border-t border-slate-200 space-y-2.5 text-sm">
+                <div className="font-semibold text-emerald-700">
+                  Đã kết nối Firebase Project: <span className="font-mono">{firebaseProjectId}</span>
                 </div>
-                <div>
-                  Mật khẩu: <span className="font-semibold text-slate-900">123456</span>
-                </div>
+                <p className="text-xs text-slate-600 leading-relaxed">
+                  Nếu đây là lần đầu bạn sử dụng dự án Firebase mới, hãy chọn tab{' '}
+                  <strong>Đăng ký mới</strong> ở bên phải để tạo tài khoản giáo viên đầu tiên.
+                  Ngay sau khi đăng ký thành công, hệ thống sẽ tự động khởi tạo toàn bộ 4 bảng dữ liệu
+                  (Lớp học, 5 Nhiệm vụ cứng, Thẻ QR, Bảng điểm) lên Firestore của bạn.
+                </p>
               </div>
-              <p className="text-xs text-slate-500">
-                Bạn cũng có thể tạo tài khoản giáo viên mới hoặc xem mục “Hướng dẫn Firebase” bên trong
-                khi muốn đồng bộ lên dự án Firebase cá nhân của trường.
-              </p>
-            </div>
+            ) : (
+              <div className="mt-6 pt-6 border-t border-slate-200 space-y-3 text-sm">
+                <div className="font-semibold text-slate-900">Tài khoản giáo viên mặc định để dùng thử:</div>
+                <div className="bg-slate-50 border border-slate-200 rounded-lg p-3.5 font-mono text-xs space-y-1.5">
+                  <div>
+                    Email: <span className="font-semibold text-slate-900">giaovien@truonghoc.edu.vn</span>
+                  </div>
+                  <div>
+                    Mật khẩu: <span className="font-semibold text-slate-900">123456</span>
+                  </div>
+                </div>
+                <p className="text-xs text-slate-500">
+                  Sau khi đăng nhập, vào tab <strong>Liên kết Firebase</strong> để xem hướng dẫn gắn cơ sở dữ liệu Firebase nếu chưa cấu hình biến môi trường.
+                </p>
+              </div>
+            )}
           </div>
 
           <div className="mt-6 pt-4 border-t border-slate-100">
@@ -94,7 +110,7 @@ export function TeacherLoginView({ onSuccess, onSwitchToStudent }: TeacherLoginV
                 setMode('login');
                 setError('');
               }}
-              className={`flex-1 py-2 px-3 text-sm font-semibold rounded-md transition-colors ${
+              className={`flex-1 py-2 px-3 text-sm font-semibold rounded-md transition-colors whitespace-nowrap ${
                 mode === 'login' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-600 hover:text-slate-900'
               }`}
             >
@@ -110,11 +126,11 @@ export function TeacherLoginView({ onSuccess, onSwitchToStudent }: TeacherLoginV
                   setPassword('');
                 }
               }}
-              className={`flex-1 py-2 px-3 text-sm font-semibold rounded-md transition-colors ${
+              className={`flex-1 py-2 px-3 text-sm font-semibold rounded-md transition-colors whitespace-nowrap ${
                 mode === 'register' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-600 hover:text-slate-900'
               }`}
             >
-              Đăng ký tài khoản mới
+              Đăng ký mới
             </button>
           </div>
 

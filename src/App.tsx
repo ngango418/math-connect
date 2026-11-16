@@ -7,7 +7,7 @@ import {
   type TeacherUser,
   type WorkspaceSnapshot,
 } from '../shared/types.ts';
-import { fetchCurrentTeacher, fetchWorkspace, logoutTeacher } from './lib/api.ts';
+import { fetchCurrentTeacher, fetchWorkspace, getActiveStorageMode, logoutTeacher } from './lib/api.ts';
 import { StudentPortal } from './components/StudentPortal.tsx';
 import { TeacherLoginView } from './components/TeacherLoginView.tsx';
 import { MissionQrTab } from './components/MissionQrTab.tsx';
@@ -69,12 +69,16 @@ export default function App() {
 
   const [workspace, setWorkspace] = useState<WorkspaceSnapshot | null>(null);
   const [workspaceLoading, setWorkspaceLoading] = useState(false);
+  const [workspaceError, setWorkspaceError] = useState('');
 
   const loadWorkspace = useCallback(async () => {
     setWorkspaceLoading(true);
+    setWorkspaceError('');
     try {
       const data = await fetchWorkspace();
       setWorkspace(data);
+    } catch (err) {
+      setWorkspaceError(err instanceof Error ? err.message : 'Không thể tải dữ liệu lớp học.');
     } finally {
       setWorkspaceLoading(false);
     }
@@ -295,6 +299,21 @@ export default function App() {
               </div>
             </div>
 
+            {getActiveStorageMode() === 'local' && activeTab !== 'firebase' && (
+              <div className="bg-amber-50 border border-amber-200 rounded-xl px-4 py-3 text-xs text-amber-900 flex flex-col sm:flex-row sm:items-center justify-between gap-2 no-print">
+                <span>
+                  Ứng dụng đang lưu dữ liệu cục bộ trên trình duyệt này. Để học sinh quét mã QR từ điện thoại khác xem được dữ liệu thời gian thực, hãy kết nối cơ sở dữ liệu Firebase.
+                </span>
+                <button
+                  type="button"
+                  onClick={() => setActiveTab('firebase')}
+                  className="font-semibold text-blue-700 hover:underline whitespace-nowrap self-start sm:self-auto"
+                >
+                  Xem hướng dẫn tạo Database Firebase →
+                </button>
+              </div>
+            )}
+
             {/* Mobile Tab Switcher */}
             <div className="flex md:hidden items-center gap-1.5 overflow-x-auto pb-1 no-print">
               {teacherNavLinks.map((link) => (
@@ -313,9 +332,32 @@ export default function App() {
               ))}
             </div>
 
-            {workspaceLoading && !workspace ? (
+            {activeTab === 'firebase' ? (
+              <FirebaseGuideTab />
+            ) : workspaceLoading && !workspace ? (
               <div className="bg-white border border-slate-200 rounded-xl p-12 text-center text-sm text-slate-500">
                 Đang tải dữ liệu lớp học...
+              </div>
+            ) : workspaceError ? (
+              <div className="bg-white border border-red-200 rounded-xl p-6 space-y-3">
+                <div className="text-sm font-bold text-red-700">Lỗi kết nối Database</div>
+                <p className="text-sm text-slate-700">{workspaceError}</p>
+                <div className="flex flex-wrap items-center gap-3 pt-1">
+                  <button
+                    type="button"
+                    onClick={loadWorkspace}
+                    className="px-4 py-2 text-xs font-semibold text-white bg-blue-700 hover:bg-blue-800 rounded-lg"
+                  >
+                    Thử kết nối lại
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setActiveTab('firebase')}
+                    className="px-4 py-2 text-xs font-semibold text-slate-700 bg-slate-100 hover:bg-slate-200 rounded-lg"
+                  >
+                    Mở tab Liên kết Firebase
+                  </button>
+                </div>
               </div>
             ) : workspace ? (
               <>
@@ -355,7 +397,6 @@ export default function App() {
                     onRefreshWorkspace={loadWorkspace}
                   />
                 )}
-                {activeTab === 'firebase' && <FirebaseGuideTab />}
               </>
             ) : null}
           </div>
